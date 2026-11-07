@@ -48,6 +48,11 @@ async function subscribeWebhook(channel, creds, callbackUrl) {
   const verifyToken = creds.verifyToken || config.verifyToken;
   if (!verifyToken) return { ok: false, error: 'Verify token missing' };
 
+  // App-level /subscriptions endpoint sirf APP access token leta hai
+  // ({app-id}|{app-secret}); page token se Meta "(#15) app access_token" error
+  // deta hai. App secret sirf tab available hota hai jab connection me save ho.
+  const appAccessToken = creds.appSecret ? `${creds.appId}|${creds.appSecret}` : creds.token;
+
   try {
     // Step 1: app-level webhook subscription
     const url =
@@ -56,7 +61,7 @@ async function subscribeWebhook(channel, creds, callbackUrl) {
       `&callback_url=${encodeURIComponent(callbackUrl)}` +
       `&verify_token=${encodeURIComponent(verifyToken)}` +
       `&fields=${encodeURIComponent('messages')}` +
-      `&access_token=${encodeURIComponent(creds.token)}`;
+      `&access_token=${encodeURIComponent(appAccessToken)}`;
 
     const res = await fetch(url, { method: 'POST' });
     const data = await res.json().catch(() => ({}));

@@ -397,6 +397,7 @@ router.post('/connections/:id/subscribe', requireAuth, requireAdmin, async (req,
     return res.status(400).json({
       error: hookResult.error,
       account_linked: accountResult.ok ? accountResult.success : false,
+      account_error: accountResult.ok ? null : accountResult.error,
     });
   }
 
