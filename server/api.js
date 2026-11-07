@@ -262,14 +262,19 @@ function readConnectionInput(body) {
   const name = String(body.name || '').trim();
   if (!name) return { error: 'name is required' };
 
+  const token = String(body.token || '').trim();
   const input = {
     channel,
     name,
     appId: String(body.app_id || '').trim(),
     accountId: String(body.account_id || '').trim(),
-    token: String(body.token || '').trim(),
+    token,
     verifyToken: String(body.verify_token || '').trim(),
-    apiHost: body.api_host === 'instagram' ? 'instagram' : 'facebook',
+    // Instagram Login tokens (IGAA...) graph.instagram.com par chalte hain;
+    // Facebook Login tokens (EAA...) graph.facebook.com par. Galat host se
+    // "Cannot parse access token" aata hai, is liye token se detect karte hain.
+    apiHost:
+      channel === 'instagram' && token.startsWith('IGAA') ? 'instagram' : 'facebook',
     extra: {},
   };
 
@@ -321,7 +326,13 @@ router.patch('/connections/:id', requireAuth, requireAdmin, (req, res) => {
   if (body.verify_token !== undefined) patch.verifyToken = String(body.verify_token).trim();
 
   // Sirf bheja gaya token replace karta hai; khaali chhorne par purana rehta hai
-  if (body.token) patch.token = String(body.token).trim();
+  if (body.token) {
+    patch.token = String(body.token).trim();
+    // Naya IG token aaya to API host bhi token ke type se set karo.
+    if (existing.channel === 'instagram') {
+      patch.apiHost = patch.token.startsWith('IGAA') ? 'instagram' : 'facebook';
+    }
+  }
   if (body.app_secret) patch.appSecret = String(body.app_secret).trim();
 
   const extra = { ...existing.extra };

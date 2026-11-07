@@ -102,6 +102,23 @@ if (!convCols.includes('connection_id')) {
 }
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
+// Purani Instagram connections jinme Facebook Login token (EAA...) hai lekin
+// api_host 'instagram' set hai - unhe graph.facebook.com par shift karo.
+try {
+  const igRows = db
+    .prepare("SELECT id, token_enc FROM connections WHERE channel = 'instagram' AND api_host = 'instagram'")
+    .all();
+  for (const row of igRows) {
+    const token = decrypt(row.token_enc);
+    if (token && !token.startsWith('IGAA')) {
+      db.prepare("UPDATE connections SET api_host = 'facebook' WHERE id = ?").run(row.id);
+      console.log(`[db] Instagram connection ${row.id} ko facebook host par shift kiya`);
+    }
+  }
+} catch (e) {
+  console.warn(`[db] instagram api_host migration fail: ${e.message}`);
+}
+
 const now = () => Math.floor(Date.now() / 1000);
 
 // ---------------------------------------------------------------- agents

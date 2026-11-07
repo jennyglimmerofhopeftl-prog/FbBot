@@ -49,7 +49,7 @@ function envCandidates() {
       token: config.igAccessToken,
       appId: config.appId,
       appSecret: config.appSecret,
-      apiHost: 'instagram',
+      apiHost: config.igAccessToken.startsWith('IGAA') ? 'instagram' : 'facebook',
       fallbackName: 'Instagram Account (.env)',
       extra: {},
     });
