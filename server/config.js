@@ -15,6 +15,7 @@ loadEnv();
 const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   verifyToken: process.env.VERIFY_TOKEN || 'omnichannel_verify_token',
+  appId: process.env.APP_ID || process.env.META_APP_ID || '',
   appSecret: process.env.APP_SECRET || '',
 
   pageAccessToken: process.env.PAGE_ACCESS_TOKEN || '',

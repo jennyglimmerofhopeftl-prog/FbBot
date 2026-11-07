@@ -90,9 +90,13 @@ async function subscribeAccount(channel, creds) {
   const host = creds.apiHost === 'instagram' ? 'instagram' : 'facebook';
 
   try {
+    // Meta ko `subscribed_fields` explicitly chahiye, warna:
+    // "(#100) The parameter subscribed_fields is required."
+    const fields = channel === 'whatsapp' ? 'messages' : 'messages,messaging_postbacks';
     const url =
       `${graphUrl(host, `${node}/subscribed_apps`)}` +
-      `?access_token=${encodeURIComponent(creds.token)}`;
+      `?subscribed_fields=${encodeURIComponent(fields)}` +
+      `&access_token=${encodeURIComponent(creds.token)}`;
     const res = await fetch(url, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (data.error) return { ok: false, error: data.error.message };
