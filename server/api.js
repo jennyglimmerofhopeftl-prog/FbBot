@@ -39,16 +39,30 @@ function requireAuth(req, res, next) {
   }
 }
 
+const STAFF_ROLES = ['admin', 'owner'];
+
+function isStaff(agent) {
+  return !!agent && STAFF_ROLES.includes(agent.role);
+}
+
 function requireAdmin(req, res, next) {
-  if (req.agent.role !== 'admin') {
+  if (!isStaff(req.agent)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
 }
 
-// Admin koi bhi note likh sakta hai; assigned agent sirf apne thread par.
+// Owner admin se upar hai: sirf owner naye admins bana/promote/demote kar sakta hai.
+function requireOwner(req, res, next) {
+  if (req.agent.role !== 'owner') {
+    return res.status(403).json({ error: 'Owner access required' });
+  }
+  next();
+}
+
+// Admin/owner koi bhi note likh sakta hai; assigned agent sirf apne thread par.
 function requireNoteAccess(req, res, next) {
-  if (req.agent.role === 'admin') return next();
+  if (isStaff(req.agent)) return next();
   const conversation = db.getConversation(req.params.id);
   if (conversation && conversation.assigned_agent_id === req.agent.id) return next();
   return res.status(403).json({ error: 'Only admin or the assigned agent can add notes' });
@@ -207,7 +221,7 @@ router.delete('/conversations/:id/notes/:messageId', requireAuth, (req, res) => 
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
   const note = db.getNoteMessage(req.params.messageId);
   if (!note) return res.status(404).json({ error: 'Note not found' });
-  if (req.agent.role !== 'admin' && note.agent_id !== req.agent.id) {
+  if (!isStaff(req.agent) && note.agent_id !== req.agent.id) {
     return res.status(403).json({ error: 'Only the author or an admin can delete this note' });
   }
   db.deleteNoteMessage(note.id);
@@ -409,13 +423,24 @@ router.post('/connections/:id/sync', requireAuth, requireAdmin, async (req, res)
 });
 
 // -------------------------------------------------------------- admin: agents
+// Admin sirf agents bana sakta hai; admin banane ke liye owner hona zaroori hai.
 router.post('/auth/agents', requireAuth, requireAdmin, (req, res) => {
-  const { name, email, password } = req.body || {};
+  const { name, email, password, role } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
-  if (db.findAgentByEmail(String(email).toLowerCase().trim())) {
+
+  const requestedRole = role === undefined || role === null || role === '' ? 'agent' : String(role);
+  if (!['agent', 'admin'].includes(requestedRole)) {
+    return res.status(400).json({ error: "role must be 'agent' or 'admin'" });
+  }
+  if (requestedRole === 'admin' && req.agent.role !== 'owner') {
+    return res.status(403).json({ error: 'Only the owner can create admins' });
+  }
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  if (db.findAgentByEmail(normalizedEmail)) {
     return res.status(409).json({ error: 'Email already exists' });
   }
-  res.json({ agent: db.createAgent(name, String(email).toLowerCase().trim(), password) });
+  res.json({ agent: db.createAgent(name, normalizedEmail, password, requestedRole) });
 });
 
 // Saved connection ko API se bhejne se pehle token chhupa do.
@@ -428,8 +453,17 @@ function toPublic(conn) {
 router.delete('/auth/agents/:id', requireAuth, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.agent.id) return res.status(400).json({ error: 'Cannot delete your own account' });
-  const result = db.deleteAgent(id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Agent not found' });
+
+  const target = db.findAgentById(id);
+  if (!target) return res.status(404).json({ error: 'Agent not found' });
+  if (target.role === 'owner') {
+    return res.status(403).json({ error: 'Owner account cannot be deleted' });
+  }
+  if (target.role === 'admin' && req.agent.role !== 'owner') {
+    return res.status(403).json({ error: 'Only the owner can delete admins' });
+  }
+
+  db.deleteAgent(id);
   broadcast('agents', {});
   res.json({ ok: true });
 });
@@ -438,10 +472,37 @@ router.patch('/auth/agents/:id', requireAuth, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const agent = db.findAgentById(id);
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
-  const photo = (req.body && req.body.photo) || '';
-  const updated = db.setAgentPhoto(id, photo);
+
+  const body = req.body || {};
+
+  if (agent.role === 'owner' && req.agent.role !== 'owner') {
+    return res.status(403).json({ error: 'Only the owner can modify the owner account' });
+  }
+
+  // Role change sirf owner kar sakta hai. Owner khud ka role nahi badal sakta
+  // (warna system bina owner ke reh jayega) aur kisi owner ko demote nahi kar sakta.
+  if (body.role !== undefined) {
+    if (req.agent.role !== 'owner') {
+      return res.status(403).json({ error: 'Only the owner can change roles' });
+    }
+    if (!['agent', 'admin'].includes(body.role)) {
+      return res.status(400).json({ error: "role must be 'agent' or 'admin'" });
+    }
+    if (agent.role === 'owner') {
+      return res.status(400).json({ error: 'Owner role cannot be changed' });
+    }
+    if (agent.id === req.agent.id) {
+      return res.status(400).json({ error: 'Cannot change your own role' });
+    }
+    db.setAgentRole(id, body.role);
+  }
+
+  if (body.photo !== undefined) {
+    db.setAgentPhoto(id, body.photo || '');
+  }
+
   broadcast('agents', {});
-  res.json({ agent: updated });
+  res.json({ agent: db.findAgentById(id) });
 });
 
 module.exports = { router, requireAuth };

@@ -100,7 +100,7 @@ if (!msgCols.includes('reply_to_id')) {
 if (!convCols.includes('connection_id')) {
   db.exec(`ALTER TABLE conversations ADD COLUMN connection_id INTEGER REFERENCES connections(id)`);
 }
-db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ?`).run(config.adminEmail);
+db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -112,6 +112,26 @@ function seedAdmin() {
   db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'admin', ?)")
     .run(config.adminEmail, config.adminName, hash);
   console.log(`[db] Seeded admin agent: ${config.adminEmail} (password: ${config.adminPassword})`);
+}
+
+// Owner alag account hota hai. Agar OWNER_EMAIL wala agent pehle se hai to usko
+// owner bana dete hain, warna naya bana dete hain. Koi owner maujood ho to
+// dobara nahi banate (taake role badalne par duplicate na bane).
+function seedOwner() {
+  const existingOwner = db.prepare("SELECT id FROM agents WHERE role = 'owner' LIMIT 1").get();
+  if (existingOwner) return;
+
+  const byEmail = findAgentByEmail(config.ownerEmail);
+  if (byEmail) {
+    db.prepare("UPDATE agents SET role = 'owner' WHERE id = ?").run(byEmail.id);
+    console.log(`[db] Promoted ${config.ownerEmail} to owner`);
+    return;
+  }
+
+  const hash = bcrypt.hashSync(config.ownerPassword, 10);
+  db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'owner', ?)")
+    .run(config.ownerEmail, config.ownerName, hash);
+  console.log(`[db] Seeded owner agent: ${config.ownerEmail} (password: ${config.ownerPassword})`);
 }
 
 function findAgentByEmail(email) {
@@ -131,11 +151,23 @@ function setAgentPhoto(id, photo) {
   return findAgentById(id);
 }
 
-function createAgent(name, email, password) {
+function createAgent(name, email, password, role = 'agent') {
+  const safeRole = role === 'admin' ? 'admin' : 'agent';
   const hash = bcrypt.hashSync(password, 10);
-  const r = db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'agent', ?)")
-    .run(email, name, hash);
+  const r = db.prepare('INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, ?, ?)')
+    .run(email, name, safeRole, hash);
   return findAgentById(Number(r.lastInsertRowid));
+}
+
+// Role change sirf owner karta hai (api.js mein enforce hota hai).
+function setAgentRole(id, role) {
+  const safeRole = role === 'admin' ? 'admin' : 'agent';
+  db.prepare('UPDATE agents SET role = ? WHERE id = ?').run(safeRole, id);
+  return findAgentById(id);
+}
+
+function countOwners() {
+  return db.prepare("SELECT count(*) AS n FROM agents WHERE role = 'owner'").get().n;
 }
 
 function deleteAgent(id) {
@@ -535,10 +567,13 @@ function setConversationTimestamps(id, { lastMessageAt, createdAt } = {}) {
 module.exports = {
   db,
   seedAdmin,
+  seedOwner,
   findAgentByEmail,
   findAgentById,
   listAgents,
   createAgent,
+  setAgentRole,
+  countOwners,
   deleteAgent,
   setAgentPhoto,
   listConnections,

@@ -62,8 +62,10 @@ export const api = {
   login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
   me: () => request('/auth/me'),
   agents: () => request('/auth/agents'),
-  createAgent: (name, email, password) => request('/auth/agents', { method: 'POST', body: { name, email, password } }),
+  createAgent: (name, email, password, role) =>
+    request('/auth/agents', { method: 'POST', body: { name, email, password, role } }),
   deleteAgent: (id) => request(`/auth/agents/${id}`, { method: 'DELETE' }),
+  updateAgent: (id, payload) => request(`/auth/agents/${id}`, { method: 'PATCH', body: payload }),
   updateAgentPhoto: (id, photo) => request(`/auth/agents/${id}`, { method: 'PATCH', body: { photo } }),
 
   connections: () => request('/connections'),

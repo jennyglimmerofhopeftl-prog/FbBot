@@ -10,6 +10,7 @@ const backup = require('./services/backup');
 const bootstrap = require('./services/bootstrap');
 
 db.seedAdmin();
+db.seedOwner();
 
 // Har server-start par DB ki consistent backup banti hai (WAL-safe).
 // Fail hone par sirf warning — server start honey se nahi rukta.
@@ -20,29 +21,16 @@ try {
   console.warn(`[backup] backup nahi ban saki: ${e.message}`);
 }
 
-// `.env` fallback tokens hain lekin DB connections nahi? To unse seed karo,
-// phir pehli baar import bhi shuru kar do (aage ke imports UI se hote hain).
-// Ye async chalta hai — server startup par block nahi karta.
+// `.env` fallback tokens hain lekin DB connections nahi? To unse seed karo
+// taake Channels page par dikhein (ye sirf naam resolve karta hai, koi bulk
+// API call nahi). Old-chats sync ab auto NAHI chalta — bhari sync ne Meta ka
+// rate-limit block trigger kiya tha, is liye import sirf manual "Old chats
+// sync" button se hota hai (pacing + block-detection ke saath).
 (async () => {
-  let seeded = [];
   try {
-    seeded = await bootstrap.seedFromEnv();
+    await bootstrap.seedFromEnv();
   } catch (e) {
     console.warn(`[bootstrap] .env seed fail hua: ${e.message}`);
-  }
-  if (!seeded.length) return;
-
-  try {
-    const { syncConnection } = require('./services/sync');
-    for (const conn of seeded) {
-      const result = await syncConnection(conn);
-      const log = result.error
-        ? `sync error: ${result.error}`
-        : `${result.total} conversations — ${result.created} import hui, ${result.messages_imported} messages`;
-      console.log(`[bootstrap] ${conn.channel} "${conn.name}" old-chats sync: ${log}`);
-    }
-  } catch (e) {
-    console.warn(`[bootstrap] auto old-chats sync fail hua: ${e.message}`);
   }
 })();
 

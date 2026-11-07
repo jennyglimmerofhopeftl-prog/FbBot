@@ -34,7 +34,7 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const isStaff = user.role === 'admin';
+  const isStaff = user.role === 'admin' || user.role === 'owner';
 
   useEffect(() => {
     function onResize() {

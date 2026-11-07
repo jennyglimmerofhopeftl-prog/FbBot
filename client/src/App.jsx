@@ -15,6 +15,15 @@ function Protected({ children }) {
   return children;
 }
 
+// Agents ko /agents aur /channels ka access nahi - sirf admin/owner ke liye.
+function StaffOnly({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'agent') return <Navigate to="/my-chats" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -23,8 +32,8 @@ export default function App() {
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/my-chats" element={<MyChats />} />
-        <Route path="/agents" element={<Agents />} />
-        <Route path="/channels" element={<Channels />} />
+        <Route path="/agents" element={<StaffOnly><Agents /></StaffOnly>} />
+        <Route path="/channels" element={<StaffOnly><Channels /></StaffOnly>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

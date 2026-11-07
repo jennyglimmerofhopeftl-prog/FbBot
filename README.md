@@ -36,7 +36,12 @@ npm run build
 npm start                   # http://localhost:4000
 ```
 
-Login: `admin@omnichannel.local` / `admin123` (pehli dafa se automatically bana diya jata hai).
+Login:
+- Owner: `owner@omnichannel.local` / `owner123` (pehli dafa se automatically bana diya jata hai)
+- Admin: `admin@omnichannel.local` / `admin123` (pehli dafa se automatically bana diya jata hai)
+
+> Production mein dono passwords `.env` (`OWNER_PASSWORD`, `ADMIN_PASSWORD`) se
+> badal kar server restart karein.
 
 ---
 
@@ -83,7 +88,7 @@ liye:
 - API har baar sirf **masked** token bhejta hai (`EAABwz••••fXYZ`). Poora token
   browser ko kabhi nahi jata — sirf wo jagah likh sakte hain jahan pehle se
   maujood hai.
-- Sirf **admin** role connections dekh/edit kar sakta hai.
+- Sirf **admin** aur **owner** role connections dekh/edit kar sakte hain.
 
 > ⚠️ `JWT_SECRET` production me strong aur **stable** rakhna zaroori hai. Agar
   aap ise change karte hain to purane encrypted tokens decrypt nahi honge aur
@@ -114,13 +119,18 @@ Callback URL aur Verify token dono wahi dene hain jo aap UI mein likh rahe hain.
 UI wala tareeqa behtar hai, lekin `.env` fallback bhi supported hai. Ab ek
 **auto-bootstrap** bhi hai: server start par agar `.env` mein token/account hain
 aur us channel+account ki koi connection DB mein nahi, to wahan se connection
-khud ban jati hai aur phir pehli baar **old chats sync** bhi khud chalta hai.
+khud ban jati hai.
 
 > Agar aapne pehle sirf `.env` use kiya tha, to pehla restart connection bana
-> dega aur aapki purani FB/IG chats inbox me aana shuru ho jayengi. Uske baad
-> Channels page se connection dekh/change/delete kar sakte hain. Dobara restart
-> par sync nahi chalta (sirf nayi seed par) — unhe manually **Old chats sync**
-> button se re-run karte hain.
+> dega. Uske baad Channels page par connection dikhegi aur wahan se **Old
+> chats sync** button dabakar purani FB/IG chats import kar saktay hain.
+>
+> **Import ab auto nahi chalta** — bohat saari conversations aik saath padhne
+> par Meta ka rate-limit block ho jata hai (jo kuch ghanton baad khud khul
+> jata hai; data pehle se mehfooz hota hai). Is liye sync sirf manual button
+> se hota hai, har page ke beech halka gap rakh kar, aur agar Meta block kare
+> to poori sync foran ruk jati hai — rozana naye messages webhook se aate
+> hain, unke liye sync ki zaroorat nahi.
 
 ---
 
@@ -198,11 +208,25 @@ WA_OWN_NUMBER=<apna_number_without_+55 e.g. 15551234567>
 
 ---
 
-## Agents
+## Roles
 
-- Har agent ka apna login bana sakte ho (admin ke role se, `POST /api/auth/agents`)
-- Conversations ko assign karo agent ko, status Open/Pending/Resolved rakho
-- Unread count har channel ke liye alag
+Teen roles hain — **owner** > **admin** > **agent**:
+
+| Kaam | Owner | Admin | Agent |
+|---|---|---|---|
+| Inbox / assign / notes | ✅ | ✅ | sirf apni assigned chat |
+| Channels / connections | ✅ | ✅ | ❌ |
+| Naya agent banana | ✅ | ✅ | ❌ |
+| **Naya admin banana** | ✅ | ❌ | ❌ |
+| Admin ko promote/demote karna | ✅ | ❌ | ❌ |
+| Admin delete karna | ✅ | ❌ | ❌ |
+| Agent delete karna | ✅ | ✅ | ❌ |
+
+- Owner account `.env` se banta hai (`OWNER_EMAIL`, `OWNER_PASSWORD`,
+  `OWNER_NAME`) aur API se delete ya demote nahi ho sakta.
+- Admin sirf agents manage karta hai; admins sirf owner bana sakta hai.
+- Har agent ka apna login banta hai. Conversations assign karo, status
+  Open/Pending/Resolved rakho, aur unread count har channel ke liye alag hai.
 
 ## API (short)
 
@@ -216,13 +240,16 @@ WA_OWN_NUMBER=<apna_number_without_+55 e.g. 15551234567>
 | POST | `/api/conversations/:id/reply` | reply bhejo |
 | POST | `/api/conversations/:id/status` | status badlo |
 | POST | `/api/conversations/:id/assign` | agent assign |
-| GET | `/api/connections` | channels list (admin, tokens masked) |
-| POST | `/api/connections` | nayi connection add karo (admin) |
-| PATCH | `/api/connections/:id` | connection update (admin) |
-| DELETE | `/api/connections/:id` | connection delete (admin) |
-| POST | `/api/connections/:id/verify` | token verify karo (admin) |
-| POST | `/api/connections/:id/subscribe` | Meta par webhook subscribe (admin) |
-| POST | `/api/connections/:id/sync` | purani conversations import karo (admin) |
+| GET | `/api/connections` | channels list (admin/owner, tokens masked) |
+| POST | `/api/connections` | nayi connection add karo (admin/owner) |
+| PATCH | `/api/connections/:id` | connection update (admin/owner) |
+| DELETE | `/api/connections/:id` | connection delete (admin/owner) |
+| POST | `/api/connections/:id/verify` | token verify karo (admin/owner) |
+| POST | `/api/connections/:id/subscribe` | Meta par webhook subscribe (admin/owner) |
+| POST | `/api/connections/:id/sync` | purani conversations import karo (admin/owner) |
+| POST | `/api/auth/agents` | naya agent banao (admin/owner); admin banane ke liye owner |
+| PATCH | `/api/auth/agents/:id` | photo ya role update (role sirf owner) |
+| DELETE | `/api/auth/agents/:id` | agent delete (admin/owner), admin delete sirf owner |
 | GET | `/api/stream` | SSE realtime |
 
 ## Database backup
@@ -245,7 +272,7 @@ WA_OWN_NUMBER=<apna_number_without_+55 e.g. 15551234567>
 - `.env` kabhi kisi ke saath share nahi karna (gitignored hai)
 - Page token short-lived hota hai — 60 din mein refresh karna parhta hai
 - `APP_SECRET` set karo taake webhook signature verify ho (extra protection)
-- Production: `JWT_SECRET` strong rakhna, admin password zoroor change karna
+- Production: `JWT_SECRET` strong rakhna, owner aur admin passwords zoroor change karna
 - `JWT_SECRET` badalne par DB ke purane encrypted tokens unlock nahi honge —
   un channels ko dobara add karna parega
-- Tokens sirf admin role dekh/edit kar sakta hai, aur API masked copy bhejti hai
+- Tokens sirf admin/owner role dekh/edit kar sakta hai, aur API masked copy bhejti hai

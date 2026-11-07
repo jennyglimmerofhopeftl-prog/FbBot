@@ -41,6 +41,11 @@ const config = {
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   adminName: process.env.ADMIN_NAME || 'Admin Agent',
 
+  // Owner sab se upar hai - sirf owner naye admins bana/promote/demote kar sakta hai.
+  ownerEmail: process.env.OWNER_EMAIL || 'owner@omnichannel.local',
+  ownerPassword: process.env.OWNER_PASSWORD || 'owner123',
+  ownerName: process.env.OWNER_NAME || 'Owner',
+
   dbFile: process.env.DB_FILE
     ? (path.isAbsolute(process.env.DB_FILE)
         ? process.env.DB_FILE

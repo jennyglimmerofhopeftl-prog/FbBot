@@ -22,7 +22,7 @@ const TABS = [
 
 export default function ChatWorkspace({ agentView = false }) {
   const { user } = useAuth();
-  const isStaff = user && user.role === 'admin';
+  const isStaff = user && (user.role === 'admin' || user.role === 'owner');
   const [activeTab, setActiveTab] = useState('all');
   const [conversations, setConversations] = useState([]);
   const [agents, setAgents] = useState([]);

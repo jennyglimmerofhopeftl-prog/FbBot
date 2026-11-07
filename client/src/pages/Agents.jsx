@@ -38,10 +38,12 @@ function AgentRowPhoto({ agent, onPhoto }) {
 
 export default function Agents() {
   const { user } = useAuth();
+  const isOwner = user?.role === 'owner';
   const [agents, setAgents] = useState([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('agent');
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState('');
 
@@ -58,11 +60,12 @@ export default function Agents() {
     e.preventDefault();
     setErr('');
     try {
-      await api.createAgent(name.trim(), email.trim(), password);
-      setMsg(`Agent ban gaya: ${email.trim()}`);
+      await api.createAgent(name.trim(), email.trim(), password, isOwner ? role : 'agent');
+      setMsg(`${role === 'admin' ? 'Admin' : 'Agent'} ban gaya: ${email.trim()}`);
       setName('');
       setEmail('');
       setPassword('');
+      setRole('agent');
       load();
     } catch (e) {
       setErr(e.message || 'Kuch ghalat hua');
@@ -79,6 +82,22 @@ export default function Agents() {
     }
   }
 
+  async function updateRole(id, nextRole) {
+    setErr('');
+    try {
+      const { agent } = await api.updateAgent(id, { role: nextRole });
+      setAgents((prev) => prev.map((a) => (a.id === agent.id ? agent : a)));
+    } catch (e) {
+      setErr(e.message);
+      load();
+    }
+  }
+
+  // Owner kisi ko bhi (khud aur doosre owner ke ilawa) delete kar sakta hai;
+  // admin sirf agents ko. Owner account kabhi delete nahi hota.
+  const canDelete = (a) =>
+    a.id !== user?.id && a.role !== 'owner' && (isOwner || a.role !== 'admin');
+
   async function updatePhoto(id, photo) {
     const { agent } = await api.updateAgentPhoto(id, photo);
     setAgents((prev) => prev.map((a) => (a.id === agent.id ? agent : a)));
@@ -91,7 +110,7 @@ export default function Agents() {
       </h1>
 
       <form onSubmit={create} className="mt-4 rounded-xl border border-lemon-soft bg-white p-4 shadow">
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className={`grid gap-3 ${isOwner ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
           <input
             placeholder="Naam"
             value={name}
@@ -115,6 +134,17 @@ export default function Agents() {
             required
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-lemon"
           />
+          {isOwner && (
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              title="Role"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-lemon"
+            >
+              <option value="agent">Agent</option>
+              <option value="admin">Admin</option>
+            </select>
+          )}
           <button className="rounded-lg bg-gradient-to-br from-brand to-lemon px-4 py-2 text-sm font-semibold text-white hover:brightness-110">
             Create
           </button>
@@ -135,8 +165,12 @@ export default function Agents() {
                 <p className="text-sm font-semibold text-slate-800">{a.name}</p>
                 <p className="text-xs text-slate-500">
                   {a.email}
-                  {a.role === 'admin' && (
-                    <span className="ml-2 rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold text-brand">
+                  {(a.role === 'admin' || a.role === 'owner') && (
+                    <span
+                      className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                        a.role === 'owner' ? 'bg-lemon-soft text-brand' : 'bg-brand-soft text-brand'
+                      }`}
+                    >
                       {a.role}
                     </span>
                   )}
@@ -145,7 +179,18 @@ export default function Agents() {
             </div>
             <div className="flex items-center gap-2">
               <AgentRowPhoto agent={a} onPhoto={updatePhoto} />
-              {a.id !== user?.id && a.role !== 'admin' && (
+              {isOwner && a.role !== 'owner' && a.id !== user?.id && (
+                <select
+                  value={a.role}
+                  onChange={(e) => updateRole(a.id, e.target.value)}
+                  title="Role change karein"
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 outline-none focus:border-lemon"
+                >
+                  <option value="agent">Agent</option>
+                  <option value="admin">Admin</option>
+                </select>
+              )}
+              {canDelete(a) && (
                 <button
                   onClick={() => remove(a.id)}
                   className="rounded-lg px-3 py-1.5 text-sm text-brand hover:bg-brand-soft"

@@ -70,6 +70,15 @@ async function syncConnection(conn) {
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (data.error) {
+        // Jab Meta rate-limit ya temporary block kare (jaisa is feature ne
+        // recently trigger kiya) to foran ruk jao — aage hammer karke block
+        // aur lamba mat karo. Error message UI ko asaan Roman-Urdu mein do.
+        if (isMetaBlocked(data.error)) {
+          result.error =
+            'Meta ne temporarily block kar diya hai (bahut zayada requests ki wajah se). Kuch ghanton baad dobara try karein — data mehfooz hai, kuch delete nahi hua.';
+          result.rate_limited = true;
+          break;
+        }
         result.error = data.error.message;
         if (data.error.code === 190) result.error += ' (token expire ho gaya hai?)';
         break;
@@ -80,12 +89,36 @@ async function syncConnection(conn) {
         importOne(conn, conv, result, selfUsername);
       }
       url = data.paging && data.paging.next ? data.paging.next : null;
+
+      // Meta ko breathing room do — har page ke beech ~800ms ka gap, warna
+      // 800+ threads aik saath padhne par account block ho jata hai (yahi
+      // pichli baar hua tha).
+      if (url) await sleep(800);
     }
   } catch (err) {
     result.error = err.message;
   }
 
   return result;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Meta ke rate-limit / temporary block errors ko pehchanta hai.
+function isMetaBlocked(err) {
+  if (!err) return false;
+  const code = Number(err.code);
+  const msg = String(err.message || '').toLowerCase();
+  if ([613, 4, 17, 368, 80004, 100].includes(code)) return true;
+  return (
+    msg.includes('temporarily blocked') ||
+    msg.includes('blocked from taking this action') ||
+    msg.includes('rate limit') ||
+    msg.includes('too many requests') ||
+    msg.includes('throttled')
+  );
 }
 
 // Account ka username nikaalne ki koshish (IG ke liye zaroori — wahan
