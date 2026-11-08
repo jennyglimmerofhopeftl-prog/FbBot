@@ -453,6 +453,15 @@ router.get('/connections/:id/webhook-status', requireAuth, requireAdmin, async (
         `?access_token=${encodeURIComponent(appToken)}`;
       const r = await fetch(url);
       out.app_subscriptions = await r.json().catch(() => ({}));
+
+      // Token kis app ka hai + expire kab hoga (host mismatch / galat app
+      // diagnose karne ke liye).
+      const dbgUrl =
+        `${graphUrl('facebook', 'debug_token')}` +
+        `?input_token=${encodeURIComponent(conn.token)}` +
+        `&access_token=${encodeURIComponent(appToken)}`;
+      const dbg = await fetch(dbgUrl);
+      out.token_debug = await dbg.json().catch(() => ({}));
     }
   } catch (e) {
     out.error = e.message;
