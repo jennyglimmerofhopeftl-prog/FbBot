@@ -8,6 +8,7 @@ const webhookRouter = require('./webhook');
 const { stream } = require('./realtime');
 const backup = require('./services/backup');
 const bootstrap = require('./services/bootstrap');
+const { syncConnection } = require('./services/sync');
 
 db.seedAdmin();
 db.seedOwner();
@@ -23,14 +24,55 @@ try {
 
 // `.env` fallback tokens hain lekin DB connections nahi? To unse seed karo
 // taake Channels page par dikhein (ye sirf naam resolve karta hai, koi bulk
-// API call nahi). Old-chats sync ab auto NAHI chalta — bhari sync ne Meta ka
-// rate-limit block trigger kiya tha, is liye import sirf manual "Old chats
-// sync" button se hota hai (pacing + block-detection ke saath).
+// API call nahi).
+//
+// Render ka filesystem ephemeral hai, is liye har deploy par SQLite DB reset
+// ho jata hai. DB khali mile to ek dafa purani chats Meta se import kar lete
+// hain (AUTO_SYNC_ON_EMPTY=false se band ho sakta hai). Sync pacing ke sath
+// chalta hai taake Meta rate-limit na kare.
+const AUTO_SYNC_ON_EMPTY = process.env.AUTO_SYNC_ON_EMPTY !== 'false';
+
+async function autoSyncIfEmpty() {
+  if (!AUTO_SYNC_ON_EMPTY) return;
+  if (db.countConversations() > 0) return;
+
+  const conns = db
+    .listConnections()
+    .filter((c) => c.enabled && c.has_token && c.channel !== 'whatsapp')
+    .map((c) => db.getConnection(c.id))
+    .filter(Boolean);
+
+  if (!conns.length) return;
+
+  console.log('[auto-sync] DB khali hai — purani chats import ho rahi hain...');
+  for (const conn of conns) {
+    try {
+      const result = await syncConnection(conn);
+      console.log(
+        `[auto-sync] ${conn.channel} (id ${conn.id}): total=${result.total} created=${result.created} messages=${result.messages_imported} error=${result.error || 'none'}`
+      );
+      if (result.rate_limited) {
+        console.warn('[auto-sync] Meta rate-limit — baaki connections skip.');
+        break;
+      }
+    } catch (e) {
+      console.warn(`[auto-sync] ${conn.channel} (id ${conn.id}) fail: ${e.message}`);
+    }
+    // Connections ke beech gap — Meta ko breathing room.
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 (async () => {
   try {
     await bootstrap.seedFromEnv();
   } catch (e) {
     console.warn(`[bootstrap] .env seed fail hua: ${e.message}`);
+  }
+  try {
+    await autoSyncIfEmpty();
+  } catch (e) {
+    console.warn(`[auto-sync] fail: ${e.message}`);
   }
 })();
 

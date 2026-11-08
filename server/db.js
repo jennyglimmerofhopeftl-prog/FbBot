@@ -266,6 +266,10 @@ function resolvedConnection(row) {
   };
 }
 
+function countConversations() {
+  return db.prepare('SELECT count(*) AS n FROM conversations').get().n;
+}
+
 function listConnections() {
   return db
     .prepare(`SELECT * FROM connections ORDER BY channel, created_at`)
@@ -611,6 +615,7 @@ module.exports = {
   deleteAgent,
   setAgentPhoto,
   listConnections,
+  countConversations,
   getConnection,
   createConnection,
   updateConnection,
