@@ -8,6 +8,7 @@ const { dispatchSend, graphUrl } = require('./services/send');
 const { saveUpload, isAllowedMime, mediaTypeFor } = require('./services/uploads');
 const { verifyToken, subscribeWebhook, subscribeAccount } = require('./services/connect');
 const { syncConnection } = require('./services/sync');
+const webhooklog = require('./services/webhooklog');
 const { broadcast } = require('./realtime');
 
 const router = express.Router();
@@ -587,6 +588,12 @@ router.post('/connections/refresh-page-token', requireAuth, requireOwner, async 
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Debug: Meta se aaye last webhook payloads (owner-only). Isse pata chalta hai
+// ke Instagram messages server tak pahunch rahe hain ya nahi.
+router.get('/webhook/events', requireAuth, requireOwner, (_req, res) => {
+  res.json({ events: webhooklog.list() });
 });
 
 // Pehli se maujood (old) Facebook/Instagram conversations inbox me import karo.

@@ -3,6 +3,7 @@ const express = require('express');
 const config = require('./config');
 const db = require('./db');
 const { resolveContact } = require('./services/userinfo');
+const webhooklog = require('./services/webhooklog');
 const { broadcast } = require('./realtime');
 
 const router = express.Router();
@@ -216,7 +217,9 @@ router.post('/', express.raw({ type: ['application/json', 'application/*+json'] 
     try { req.body = JSON.parse(req.body); } catch (err) { return res.sendStatus(400); }
   }
   console.log(`[webhook] POST received | bytes: ${req.rawBody ? req.rawBody.length : 'n/a'} | object: ${(req.body || {}).object}`);
-  if (!verifyHubSignature(req)) {
+  const signatureOk = verifyHubSignature(req);
+  webhooklog.add(req.body, { signatureOk });
+  if (!signatureOk) {
     console.warn('[webhook] Bad signature');
     return res.sendStatus(403);
   }
