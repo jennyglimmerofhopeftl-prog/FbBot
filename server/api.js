@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('./config');
 const db = require('./db');
-const { dispatchSend } = require('./services/send');
+const { dispatchSend, graphUrl } = require('./services/send');
 const { saveUpload, isAllowedMime, mediaTypeFor } = require('./services/uploads');
 const { verifyToken, subscribeWebhook, subscribeAccount } = require('./services/connect');
 const { syncConnection } = require('./services/sync');
@@ -419,6 +419,46 @@ router.post('/connections/:id/subscribe', requireAuth, requireAdmin, async (req,
     webhook: hookResult.message,
     object: hookResult.object,
   });
+});
+
+// Diagnostic: Meta par app-level aur page/IG-level webhook subscription kya hai.
+router.get('/connections/:id/webhook-status', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const conn = db.getConnection(id);
+  if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+  const out = {
+    connection: {
+      id: conn.id,
+      channel: conn.channel,
+      account_id: conn.accountId,
+      app_id: conn.appId,
+      api_host: conn.apiHost,
+    },
+  };
+
+  try {
+    if (conn.channel === 'facebook' || conn.channel === 'instagram') {
+      const host = conn.apiHost === 'instagram' ? 'instagram' : 'facebook';
+      const url =
+        `${graphUrl(host, `${conn.accountId}/subscribed_apps`)}` +
+        `?access_token=${encodeURIComponent(conn.token)}`;
+      const r = await fetch(url);
+      out.account_subscribed_apps = await r.json().catch(() => ({}));
+    }
+    if (conn.appId && conn.appSecret) {
+      const appToken = `${conn.appId}|${conn.appSecret}`;
+      const url =
+        `${graphUrl('facebook', `${conn.appId}/subscriptions`)}` +
+        `?access_token=${encodeURIComponent(appToken)}`;
+      const r = await fetch(url);
+      out.app_subscriptions = await r.json().catch(() => ({}));
+    }
+  } catch (e) {
+    out.error = e.message;
+  }
+
+  res.json(out);
 });
 
 // Pehli se maujood (old) Facebook/Instagram conversations inbox me import karo.
