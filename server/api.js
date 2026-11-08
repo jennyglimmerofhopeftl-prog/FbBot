@@ -474,7 +474,7 @@ router.get('/connections/:id/webhook-status', requireAuth, requireAdmin, async (
 // me convert karta hai, sab Facebook/Instagram connections par apply karta hai,
 // phir dono ko webhook par subscribe kar deta hai. User ko sirf ek token paste
 // karna hota hai - baqi sab server khud karta hai.
-router.post('/connections/refresh-page-token', requireAuth, requireAdmin, async (req, res) => {
+router.post('/connections/refresh-page-token', requireAuth, requireOwner, async (req, res) => {
   const body = req.body || {};
   const userToken = String(body.user_token || '').trim();
   if (!userToken) return res.status(400).json({ error: 'user_token required' });
@@ -580,6 +580,9 @@ router.post('/connections/refresh-page-token', requireAuth, requireAdmin, async 
       instagram_account_id: igAccountId,
       updated_connections: applied,
       subscriptions,
+      // Render env update ke liye (owner-only route). Default response me token
+      // nahi jata.
+      ...(body.reveal ? { page_token: page.access_token } : {}),
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
