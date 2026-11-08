@@ -29,11 +29,11 @@ export default function Login() {
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-300/60">
         <img
           src="/wolf-logo.png"
-          alt="Wolf Bots"
+          alt="ZEUS Bots"
           className="mx-auto mb-5 h-40 w-40 rounded-2xl shadow-lg shadow-slate-300"
         />
         <h1 className="mb-1 bg-gradient-to-br from-brand to-lemon bg-clip-text text-center text-3xl font-bold text-transparent">
-          Wolf Bots
+          ZEUS Bots
         </h1>
         <p className="mb-6 text-center text-sm text-slate-400">
           Facebook · Instagram · WhatsApp Support Dashboard

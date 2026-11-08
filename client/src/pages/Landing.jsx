@@ -25,9 +25,9 @@ export default function Landing() {
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-3">
-            <img src="/wolf-logo.png" alt="Wolf Bots" className="h-11 w-11 rounded-xl shadow-md shadow-slate-300" />
+            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-11 w-11 rounded-xl shadow-md shadow-slate-300" />
             <span className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-lg font-bold text-transparent">
-              Wolf Bots
+              ZEUS Bots
             </span>
           </Link>
           <Link
@@ -49,17 +49,17 @@ export default function Landing() {
         />
         <div className="relative">
           <p className="mb-4 inline-block rounded-full border border-lemon/40 bg-lemon-soft px-4 py-1 text-sm font-semibold text-brand">
-            🐺 THE WOLF IS BACK! 🔥
+            ⚡ ZEUS IS BACK! 🔥
           </p>
           <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl">
             <span className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-transparent">
-              Wolf Bots is back
+              ZEUS Bots is back
             </span>
             <br />
             <span className="text-slate-800">stronger, smarter & more powerful.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-600">
-            The wait is over. Wolf Bots runs your{" "}
+            The wait is over. ZEUS Bots runs your{" "}
             <span className="font-semibold text-slate-800">
               Facebook, Instagram & WhatsApp support
             </span>{" "}
@@ -116,14 +116,14 @@ export default function Landing() {
           <span className="font-semibold text-slate-800">Instagram DM support</span>, or a
           complete{" "}
           <span className="font-semibold text-slate-800">omnichannel workflow</span> —{" "}
-          <span className="font-semibold text-brand">Wolf Bots knows how to get the job done.</span> 🐺
+          <span className="font-semibold text-brand">ZEUS Bots knows how to get the job done.</span> ⚡
         </p>
         <div className="mt-8 rounded-2xl border border-lemon-soft bg-white p-8 shadow-sm">
-          <p className="text-slate-500">The Wolf may have been silent…</p>
+          <p className="text-slate-500">ZEUS may have been silent…</p>
           <p className="mt-1 text-xl font-bold text-slate-800">but it was never gone.</p>
           <p className="mt-4 text-2xl font-extrabold">
             <span className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-transparent">
-              🔥 NOW, THE WOLF IS BACK.
+              🔥 NOW, ZEUS IS BACK.
             </span>
           </p>
         </div>
@@ -144,10 +144,10 @@ export default function Landing() {
 
       {/* Big line + CTA */}
       <section className="mx-auto max-w-4xl px-4 py-12 text-center">
-        <p className="text-2xl font-bold text-slate-800">🐺 One Wolf. Endless Possibilities.</p>
+        <p className="text-2xl font-bold text-slate-800">⚡ One ZEUS. Endless Possibilities.</p>
         <div className="mt-8 rounded-3xl bg-gradient-to-br from-brand to-lemon p-10 text-white shadow-xl shadow-lemon/30">
           <h2 className="text-2xl font-extrabold sm:text-3xl">
-            WOLF BOTS — AUTOMATE SMART. MOVE FAST.
+            ZEUS BOTS — AUTOMATE SMART. MOVE FAST.
           </h2>
           <p className="mt-2 text-white/90">
             Facebook · Instagram · WhatsApp — ek hi dashboard. Apna support inbox kholo.
@@ -165,11 +165,11 @@ export default function Landing() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row">
           <div className="flex items-center gap-2">
-            <img src="/wolf-logo.png" alt="Wolf Bots" className="h-8 w-8 rounded-lg" />
-            <span className="text-sm font-semibold text-slate-600">Wolf Bots</span>
+            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-8 w-8 rounded-lg" />
+            <span className="text-sm font-semibold text-slate-600">ZEUS Bots</span>
           </div>
           <p className="text-xs text-slate-400">
-            🐺 One Wolf. Endless Possibilities. · Facebook · Instagram · WhatsApp
+            ⚡ One ZEUS. Endless Possibilities. · Facebook · Instagram · WhatsApp
           </p>
         </div>
       </footer>

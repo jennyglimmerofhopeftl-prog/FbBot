@@ -104,12 +104,12 @@ export default function Layout() {
             <div className="flex items-center gap-3">
               <img
                 src="/wolf-logo.png"
-                alt="Wolf Bots"
+                alt="ZEUS Bots"
                 className="h-16 w-16 rounded-xl shadow-md shadow-slate-300"
               />
               <div>
                 <p className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-xl font-bold text-transparent">
-                  Wolf Bots
+                  ZEUS Bots
                 </p>
                 <p className="text-xs text-slate-400">{user.name}</p>
               </div>
