@@ -30,7 +30,7 @@ export default function Login() {
         <img
           src="/wolf-logo.png"
           alt="ZEUS Bots"
-          className="mx-auto mb-5 h-40 w-40 rounded-2xl shadow-lg shadow-slate-300"
+          className="mx-auto mb-5 h-40 w-40 rounded-2xl object-contain shadow-lg shadow-slate-300"
         />
         <h1 className="mb-1 bg-gradient-to-br from-brand to-lemon bg-clip-text text-center text-3xl font-bold text-transparent">
           ZEUS Bots

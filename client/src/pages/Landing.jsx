@@ -25,7 +25,7 @@ export default function Landing() {
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-3">
-            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-11 w-11 rounded-xl shadow-md shadow-slate-300" />
+            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-11 w-11 rounded-xl object-contain shadow-md shadow-slate-300" />
             <span className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-lg font-bold text-transparent">
               ZEUS Bots
             </span>
@@ -165,7 +165,7 @@ export default function Landing() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row">
           <div className="flex items-center gap-2">
-            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-8 w-8 rounded-lg" />
+            <img src="/wolf-logo.png" alt="ZEUS Bots" className="h-8 w-8 rounded-lg object-contain" />
             <span className="text-sm font-semibold text-slate-600">ZEUS Bots</span>
           </div>
           <p className="text-xs text-slate-400">

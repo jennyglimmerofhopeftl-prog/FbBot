@@ -105,7 +105,7 @@ export default function Layout() {
               <img
                 src="/wolf-logo.png"
                 alt="ZEUS Bots"
-                className="h-16 w-16 rounded-xl shadow-md shadow-slate-300"
+                className="h-16 w-16 rounded-xl object-contain shadow-md shadow-slate-300"
               />
               <div>
                 <p className="bg-gradient-to-br from-brand to-lemon bg-clip-text text-xl font-bold text-transparent">
