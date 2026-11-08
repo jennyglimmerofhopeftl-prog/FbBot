@@ -43,13 +43,18 @@ function resolveCredentials(channel, connectionId) {
     };
   }
   if (channel === 'instagram') {
+    // Facebook Login (EAA...) IG ke liye Page access token chalta hai.
+    const igToken =
+      config.igAccessToken && config.igAccessToken.startsWith('IGAA')
+        ? config.igAccessToken
+        : config.pageAccessToken || config.igAccessToken;
     return {
       source: 'env',
       connectionId: null,
-      token: config.igAccessToken,
+      token: igToken,
       accountId: config.igAccountId,
       appSecret: config.appSecret,
-      apiHost: 'instagram',
+      apiHost: igToken && igToken.startsWith('IGAA') ? 'instagram' : 'facebook',
       extra: {},
     };
   }

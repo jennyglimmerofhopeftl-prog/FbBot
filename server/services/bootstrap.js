@@ -14,9 +14,9 @@ const db = require('../db');
 const { graphUrl } = require('./send');
 
 // Account ka naam/screen-name nikaalta hai (best-effort — fail ho to fallback).
-async function resolveAccountLabel(channel, accountId, token, fallback) {
+async function resolveAccountLabel(channel, accountId, token, fallback, apiHost) {
   try {
-    const host = channel === 'instagram' ? 'instagram' : 'facebook';
+    const host = apiHost || (channel === 'instagram' ? 'instagram' : 'facebook');
     const res = await fetch(
       `${graphUrl(host, accountId)}?fields=name,username&access_token=${encodeURIComponent(token)}`
     );
@@ -42,17 +42,27 @@ function envCandidates() {
       extra: {},
     });
   }
-  if (config.igAccessToken && config.igAccountId) {
-    out.push({
-      channel: 'instagram',
-      accountId: config.igAccountId,
-      token: config.igAccessToken,
-      appId: config.appId,
-      appSecret: config.appSecret,
-      apiHost: config.igAccessToken.startsWith('IGAA') ? 'instagram' : 'facebook',
-      fallbackName: 'Instagram Account (.env)',
-      extra: {},
-    });
+  if (config.igAccountId) {
+    // Instagram messaging via Facebook Login me Page access token hi chalta hai
+    // (Instagram Login wale IGAA... tokens alag hote hain). Is liye agar IG
+    // token EAA... hai to PAGE_ACCESS_TOKEN ko priority do - dono channels ek
+    // hi app/token se chalenge.
+    const igToken =
+      config.igAccessToken && config.igAccessToken.startsWith('IGAA')
+        ? config.igAccessToken
+        : config.pageAccessToken || config.igAccessToken;
+    if (igToken) {
+      out.push({
+        channel: 'instagram',
+        accountId: config.igAccountId,
+        token: igToken,
+        appId: config.appId,
+        appSecret: config.appSecret,
+        apiHost: igToken.startsWith('IGAA') ? 'instagram' : 'facebook',
+        fallbackName: 'Instagram Account (.env)',
+        extra: {},
+      });
+    }
   }
   if (config.waAccessToken && config.waPhoneNumberId) {
     out.push({
@@ -84,7 +94,8 @@ async function seedFromEnv() {
       cand.channel,
       cand.accountId,
       cand.token,
-      cand.fallbackName
+      cand.fallbackName,
+      cand.apiHost
     );
 
     const conn = db.createConnection({

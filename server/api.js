@@ -470,6 +470,122 @@ router.get('/connections/:id/webhook-status', requireAuth, requireAdmin, async (
   res.json(out);
 });
 
+// Ek short-lived USER token (Graph API Explorer se) ko long-lived page token
+// me convert karta hai, sab Facebook/Instagram connections par apply karta hai,
+// phir dono ko webhook par subscribe kar deta hai. User ko sirf ek token paste
+// karna hota hai - baqi sab server khud karta hai.
+router.post('/connections/refresh-page-token', requireAuth, requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const userToken = String(body.user_token || '').trim();
+  if (!userToken) return res.status(400).json({ error: 'user_token required' });
+  if (!config.appId || !config.appSecret) {
+    return res.status(400).json({ error: 'APP_ID / APP_SECRET server env me set nahi hai' });
+  }
+
+  const callbackUrl =
+    String(body.callback_url || '').trim() || `https://${req.get('host')}/webhook`;
+
+  try {
+    // 1) short-lived user token -> long-lived user token (60 din)
+    const exchangeUrl =
+      `${graphUrl('facebook', 'oauth/access_token')}` +
+      `?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(config.appId)}` +
+      `&client_secret=${encodeURIComponent(config.appSecret)}` +
+      `&fb_exchange_token=${encodeURIComponent(userToken)}`;
+    const exchange = await (await fetch(exchangeUrl)).json().catch(() => ({}));
+    if (exchange.error || !exchange.access_token) {
+      return res.status(400).json({
+        step: 'exchange',
+        error: (exchange.error && exchange.error.message) || 'Token exchange failed',
+      });
+    }
+
+    // 2) user ke pages + unke long-lived page tokens
+    const pagesUrl =
+      `${graphUrl('facebook', 'me/accounts')}` +
+      `?fields=id,name,access_token&limit=100` +
+      `&access_token=${encodeURIComponent(exchange.access_token)}`;
+    const pagesData = await (await fetch(pagesUrl)).json().catch(() => ({}));
+    if (pagesData.error) {
+      return res.status(400).json({ step: 'accounts', error: pagesData.error.message });
+    }
+    const pages = Array.isArray(pagesData.data) ? pagesData.data : [];
+    if (!pages.length) {
+      return res.status(400).json({
+        step: 'accounts',
+        error: 'Is token me koi Facebook Page nahi mila (pages_show_list permission check karein)',
+      });
+    }
+
+    const wantedPageId = String(body.page_id || config.pageId || '').trim();
+    const page =
+      pages.find((p) => p.id === wantedPageId && p.access_token) ||
+      pages.find((p) => p.access_token) ||
+      pages[0];
+    if (!page || !page.access_token) {
+      return res.status(400).json({ step: 'accounts', error: 'Page access token nahi mila' });
+    }
+
+    // 3) Page se linked Instagram business account id nikaalo (agar hai)
+    let igAccountId = null;
+    try {
+      const igUrl =
+        `${graphUrl('facebook', page.id)}` +
+        `?fields=instagram_business_account{id,username}` +
+        `&access_token=${encodeURIComponent(page.access_token)}`;
+      const igData = await (await fetch(igUrl)).json().catch(() => ({}));
+      if (igData.instagram_business_account && igData.instagram_business_account.id) {
+        igAccountId = igData.instagram_business_account.id;
+      }
+    } catch {
+      /* IG linked nahi hai to skip */
+    }
+
+    // 4) Sab FB/IG connections ko naye page token par shift karo
+    const applied = [];
+    for (const conn of db.listConnections()) {
+      if (conn.channel === 'facebook') {
+        db.updateConnection(conn.id, { token: page.access_token, apiHost: 'facebook' });
+        applied.push(conn.id);
+      } else if (conn.channel === 'instagram') {
+        const patch = { token: page.access_token, apiHost: 'facebook' };
+        if (igAccountId) patch.accountId = igAccountId;
+        db.updateConnection(conn.id, patch);
+        applied.push(conn.id);
+      }
+    }
+    broadcast('connections', {});
+
+    // 5) Webhook subscribe (account-level + app-level)
+    const subscriptions = [];
+    for (const id of applied) {
+      const conn = db.getConnection(id);
+      if (!conn) continue;
+      const account = await subscribeAccount(conn.channel, conn);
+      const hook = await subscribeWebhook(conn.channel, conn, callbackUrl);
+      subscriptions.push({
+        id,
+        channel: conn.channel,
+        account_linked: account.ok ? account.success : false,
+        account_error: account.ok ? null : account.error,
+        webhook: hook.ok ? hook.message : null,
+        webhook_error: hook.ok ? null : hook.error,
+      });
+    }
+
+    res.json({
+      ok: true,
+      page: { id: page.id, name: page.name },
+      instagram_account_id: igAccountId,
+      updated_connections: applied,
+      subscriptions,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Pehli se maujood (old) Facebook/Instagram conversations inbox me import karo.
 // Meta poori history nahi deta, lekin conversations list + last message
 // (snippet) mil jata hai - isi se old chats chat-column me dikhne lagti hain.
