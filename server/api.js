@@ -148,6 +148,48 @@ router.post('/conversations/:id/reply', requireAuth, async (req, res) => {
   res.json({ ok: true, message: record });
 });
 
+// Sent message "edit": Meta already-sent message ko badal nahi sakta, is liye
+// corrected text naya message ban kar jata hai aur purane par "(edited)" mark
+// lag jata hai. Isse customer tak correction pahunchti hai.
+router.post('/conversations/:id/messages/:messageId/edit', requireAuth, async (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+  const message = db.getMessage(Number(req.params.messageId));
+  if (!message || message.conversation_id !== conversation.id) {
+    return res.status(404).json({ error: 'Message not found in this conversation' });
+  }
+  if (message.direction !== 'outbound' || message.sender === 'note') {
+    return res.status(400).json({ error: 'Only sent messages can be edited' });
+  }
+  if (!isStaff(req.agent) && message.agent_id !== req.agent.id) {
+    return res.status(403).json({ error: 'Only the author or an admin can edit this message' });
+  }
+
+  const body = String((req.body && req.body.body) || '').trim();
+  if (!body) return res.status(400).json({ error: 'Edited message body is required' });
+
+  const result = await dispatchSend(conversation, conversation.external_id, body, null);
+  if (!result.ok) {
+    return res.status(502).json({ error: result.error || 'Failed to send edited message' });
+  }
+
+  const record = db.addMessage({
+    conversationId: conversation.id,
+    direction: 'outbound',
+    body,
+    type: 'text',
+    metaId: (result.data && result.data.message_id) || null,
+    agentId: req.agent.id,
+  });
+  const edited = db.markMessageEdited(message.id, record.id);
+
+  const full = db.getConversation(conversation.id);
+  broadcast('message', { conversation: full, message: record });
+  broadcast('message-edited', { conversation_id: conversation.id, message: edited });
+  res.json({ ok: true, message: record, edited });
+});
+
 // Upload media for later use in a reply. Returns a URL that is sendable to FB/IG.
 router.post('/upload', requireAuth, (req, res) => {
   upload.single('file')(req, res, async (err) => {

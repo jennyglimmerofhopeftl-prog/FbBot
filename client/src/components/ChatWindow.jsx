@@ -146,7 +146,7 @@ function ReplyButton({ onClick, after = false }) {
   );
 }
 
-function MessageBubble({ m, onReply, replying, onDelete, canDelete }) {
+function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit }) {
   if (m.sender === 'note') {
     return (
       <div className="flex justify-center">
@@ -187,9 +187,20 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete }) {
         <QuoteBar quote={m.reply_to} mine={mine} />
         <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" mine={mine} />
         {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
-        <p className={`mt-1 text-right text-[10px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
-          {formatClock(m.created_at)}
-        </p>
+        <div className={`mt-1 flex items-center justify-end gap-2 text-[10px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
+          {m.edited_at ? <span className="italic">(edited)</span> : null}
+          {mine && m.body && !m.media_url ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Edit karo — corrected text naya message ban kar jayega"
+              className={mine ? 'text-white/70 transition hover:text-white' : 'text-slate-400 transition hover:text-brand'}
+            >
+              ✏️
+            </button>
+          ) : null}
+          <span>{formatClock(m.created_at)}</span>
+        </div>
       </div>
     </div>
   );
@@ -210,6 +221,7 @@ export default function ChatWindow({
   onToggleNotes,
   mobileNotes,
   onSendMedia,
+  onEdit,
   onError,
   myId,
   isStaff,
@@ -227,7 +239,9 @@ export default function ChatWindow({
   const [notesWidth, setNotesWidth] = useState(320);
   const [showInfo, setShowInfo] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [editing, setEditing] = useState(null);
   const fileRef = useRef(null);
+  const textRef = useRef(null);
   const forwardFileRef = useRef(null);
   const scrollRef = useRef(null);
   const msgListRef = useRef(null);
@@ -245,6 +259,7 @@ export default function ChatWindow({
     setQuickNote('');
     setShowInfo(false);
     setReplyingTo(null);
+    setEditing(null);
   }, [active?.id]);
 
   useEffect(() => {
@@ -282,6 +297,7 @@ export default function ChatWindow({
   const notes = messages.filter((m) => m.sender === 'note');
 
   function addFiles(files) {
+    if (editing) return;
     setPending((prev) => [...prev, ...[...files].map(makePreview)]);
   }
 
@@ -352,9 +368,34 @@ export default function ChatWindow({
     return out;
   }
 
+  function startEdit(m) {
+    setEditing(m);
+    setReplyingTo(null);
+    setPending([]);
+    setText(m.body || '');
+    requestAnimationFrame(() => textRef.current?.focus());
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (sending) return;
+
+    // Edit mode: corrected text naya message ban kar jayega.
+    if (editing) {
+      if (!text.trim()) return;
+      setSending(true);
+      try {
+        await onEdit(editing.id, text.trim());
+        setText('');
+        setEditing(null);
+      } catch (err) {
+        onError(err.message);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (!pending.length && !text.trim()) return;
     setSending(true);
     try {
@@ -506,7 +547,8 @@ export default function ChatWindow({
               <MessageBubble
                 key={m.id}
                 m={m}
-                onReply={() => setReplyingTo(m)}
+                onReply={() => { setEditing(null); setReplyingTo(m); }}
+                onEdit={() => startEdit(m)}
                 replying={replyingTo?.id === m.id}
               />
             ))}
@@ -533,6 +575,27 @@ export default function ChatWindow({
           )}
 
           {pending.length > 0 && <Previews items={pending} onRemove={removePending} />}
+
+          {editing && (
+            <div className="mb-2 flex items-start gap-2 rounded-lg border border-lemon/40 bg-lemon-soft px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-lemon">
+                  ✏️ Editing message
+                </p>
+                <p className="truncate text-xs text-slate-600">
+                  Send karne par corrected text naya message ban kar jayega; purana "(edited)" mark ho jayega.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditing(null); setText(''); }}
+                className="rounded p-0.5 text-slate-400 hover:text-brand"
+                title="Edit cancel karo"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {replyingTo && (
             <div className="mb-2 flex items-start gap-2 rounded-lg border border-lemon/30 bg-lemon-soft px-3 py-2">
@@ -578,15 +641,18 @@ export default function ChatWindow({
                 if (fileRef.current) fileRef.current.value = '';
               }}
             />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              title="Attach karo (drag-drop ya paste Ctrl+V)"
-              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
-            >
-              🖼
-            </button>
+            {!editing && (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                title="Attach karo (drag-drop ya paste Ctrl+V)"
+                className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                🖼
+              </button>
+            )}
             <textarea
+              ref={textRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -597,11 +663,13 @@ export default function ChatWindow({
               }}
               rows={1}
               placeholder={
-                pending.length
-                  ? 'Media ke liye caption likho (optional)...'
-                  : replyingTo
-                    ? 'Is message par reply likhein...'
-                    : `${channel.label} par reply likhein...`
+                editing
+                  ? 'Corrected text likhein...'
+                  : pending.length
+                    ? 'Media ke liye caption likho (optional)...'
+                    : replyingTo
+                      ? 'Is message par reply likhein...'
+                      : `${channel.label} par reply likhein...`
               }
               className="max-h-48 min-h-[42px] flex-1 resize-y rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-lemon"
             />
@@ -610,7 +678,7 @@ export default function ChatWindow({
               disabled={sending || (!text.trim() && !pending.length)}
               className="rounded-lg bg-gradient-to-br from-brand to-lemon px-5 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
             >
-              {sending ? 'Sending...' : pending.length ? `Send ${pending.length}` : 'Send'}
+              {sending ? 'Sending...' : editing ? 'Update' : pending.length ? `Send ${pending.length}` : 'Send'}
             </button>
           </div>
         </form>

@@ -86,6 +86,8 @@ export const api = {
   },
   conversation: (id) => request(`/conversations/${id}`),
   reply: (id, payload) => request(`/conversations/${id}/reply`, { method: 'POST', body: payload }),
+  editMessage: (id, messageId, body) =>
+    request(`/conversations/${id}/messages/${messageId}/edit`, { method: 'POST', body: { body } }),
   assign: (id, agentId, note, media) => request(`/conversations/${id}/assign`, {
     method: 'POST',
     body: { agent_id: agentId, note: note || '', ...(media || {}) },

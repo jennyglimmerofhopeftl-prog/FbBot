@@ -97,6 +97,15 @@ if (!msgCols.includes('sender')) {
 if (!msgCols.includes('reply_to_id')) {
   db.exec(`ALTER TABLE messages ADD COLUMN reply_to_id INTEGER`);
 }
+// "Edit" feature: Meta already-sent message ko badal nahi sakta, is liye
+// corrected text naya message ban kar jata hai aur purana message yahan mark
+// ho jata hai (UI par "(edited)" dikhta hai).
+if (!msgCols.includes('edited_at')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN edited_at INTEGER`);
+}
+if (!msgCols.includes('superseded_by')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN superseded_by INTEGER`);
+}
 if (!convCols.includes('connection_id')) {
   db.exec(`ALTER TABLE conversations ADD COLUMN connection_id INTEGER REFERENCES connections(id)`);
 }
@@ -557,6 +566,14 @@ function getMessage(id) {
   return db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
 }
 
+// Purane message ko "edited" mark karo. Naya (corrected) message alag row hota
+// hai; superseded_by us naye message ki id rakhta hai.
+function markMessageEdited(id, supersededBy = null) {
+  db.prepare('UPDATE messages SET edited_at = ?, superseded_by = ? WHERE id = ?')
+    .run(now(), supersededBy, id);
+  return db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
+}
+
 function findMessageByMetaId(metaId, conversationId) {
   if (!metaId) return null;
   return db
@@ -616,6 +633,7 @@ module.exports = {
   deleteNoteMessage,
   listMessages,
   getMessage,
+  markMessageEdited,
   findMessageByMetaId,
   hasMessages,
   setConversationTimestamps,

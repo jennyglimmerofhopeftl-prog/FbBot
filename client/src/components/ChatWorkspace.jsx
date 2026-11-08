@@ -238,9 +238,17 @@ export default function ChatWorkspace({ agentView = false }) {
       }
     };
 
+    const handleMessageEdited = (payload) => {
+      if (activeIdRef.current !== payload.conversation_id) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.message.id ? { ...m, ...payload.message } : m))
+      );
+    };
+
     source.addEventListener('message', (event) => handleMessage(JSON.parse(event.data)));
     source.addEventListener('conversation', (event) => handleConversation(JSON.parse(event.data)));
     source.addEventListener('message-deleted', (event) => handleMessageDeleted(JSON.parse(event.data)));
+    source.addEventListener('message-edited', (event) => handleMessageEdited(JSON.parse(event.data)));
 
     return () => {
       source.close();
@@ -280,6 +288,22 @@ export default function ChatWorkspace({ agentView = false }) {
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  // Meta already-sent message edit nahi kar sakta, is liye corrected text naya
+  // message ban kar jata hai aur purana "(edited)" mark ho jata hai.
+  async function editMessage(messageId, body) {
+    if (!activeId) return;
+    const { message, edited } = await api.editMessage(activeId, messageId, body);
+    setMessages((prev) => prev.map((m) => (m.id === edited.id ? { ...m, ...edited } : m)));
+    setMessages((prev) => mergeMessages(prev, [message]));
+    setConversations((prev) =>
+      upsert(prev, {
+        ...prev.find((c) => c.id === activeId),
+        last_message: message.body,
+        last_message_at: message.created_at,
+      })
+    );
   }
 
   async function changeStatus(status) {
@@ -498,6 +522,7 @@ export default function ChatWorkspace({ agentView = false }) {
           messages={messages}
           onSend={send}
           onSendMedia={sendMedia}
+          onEdit={editMessage}
           canAssign={!agentView && isStaff}
           canNote={isStaff || active?.assigned_agent_id === user?.id}
           agents={agents}
