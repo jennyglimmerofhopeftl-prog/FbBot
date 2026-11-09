@@ -12,6 +12,7 @@
 const config = require('../config');
 const db = require('../db');
 const { graphUrl } = require('./send');
+const { telegramApi } = require('./telegram');
 
 // Account ka naam/screen-name nikaalta hai (best-effort — fail ho to fallback).
 async function resolveAccountLabel(channel, accountId, token, fallback, apiHost) {
@@ -76,6 +77,16 @@ function envCandidates() {
       extra: { wa_own_number: config.waOwnNumber },
     });
   }
+  if (config.telegramBotToken) {
+    out.push({
+      channel: 'telegram',
+      accountId: config.telegramAccountId,
+      token: config.telegramBotToken,
+      apiHost: 'telegram',
+      fallbackName: 'Telegram Bot (.env)',
+      extra: {},
+    });
+  }
   return out;
 }
 
@@ -83,25 +94,39 @@ function envCandidates() {
 async function seedFromEnv() {
   const created = [];
   for (const cand of envCandidates()) {
-    if (!cand.token || !cand.accountId) continue;
+    if (!cand.token) continue;
+
+    let accountId = cand.accountId;
+    let name = cand.fallbackName;
+
+    if (cand.channel === 'telegram') {
+      // Bot id/name token se milte hain. Isi id se duplicate detection hoti
+      // hai, is liye API fail ho to connection skip karte hain.
+      const me = await telegramApi(cand.token, 'getMe', {});
+      if (!me.ok || !me.data) {
+        console.warn(`[bootstrap] Telegram getMe fail: ${me.error || 'unknown'}`);
+        continue;
+      }
+      accountId = accountId || String(me.data.id);
+      name =
+        [me.data.first_name, me.data.last_name].filter(Boolean).join(' ') ||
+        me.data.username ||
+        name;
+    } else {
+      if (!accountId) continue;
+      name = await resolveAccountLabel(cand.channel, accountId, cand.token, cand.fallbackName, cand.apiHost);
+    }
+
     // Same channel+account wali connection pehle se ho to chhoro.
     const existing = db.db
       .prepare('SELECT id FROM connections WHERE channel = ? AND account_id = ? LIMIT 1')
-      .get(cand.channel, String(cand.accountId));
+      .get(cand.channel, String(accountId));
     if (existing) continue;
-
-    const name = await resolveAccountLabel(
-      cand.channel,
-      cand.accountId,
-      cand.token,
-      cand.fallbackName,
-      cand.apiHost
-    );
 
     const conn = db.createConnection({
       channel: cand.channel,
       name,
-      accountId: cand.accountId,
+      accountId,
       token: cand.token,
       appId: cand.appId,
       appSecret: cand.appSecret,

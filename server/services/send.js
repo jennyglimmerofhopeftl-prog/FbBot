@@ -1,5 +1,8 @@
+const fs = require('node:fs');
+const path = require('node:path');
 const config = require('../config');
 const db = require('../db');
+const { telegramApi, botUrl } = require('./telegram');
 
 // Do credential sources hain:
 //  1) UI se add ki hui connection (connections table)  -> priority
@@ -67,6 +70,17 @@ function resolveCredentials(channel, connectionId) {
       appSecret: config.appSecret,
       apiHost: 'facebook',
       extra: { wa_own_number: config.waOwnNumber },
+    };
+  }
+  if (channel === 'telegram') {
+    return {
+      source: 'env',
+      connectionId: null,
+      token: config.telegramBotToken,
+      accountId: config.telegramAccountId,
+      appSecret: '',
+      apiHost: 'telegram',
+      extra: {},
     };
   }
 
@@ -153,6 +167,60 @@ async function sendWhatsApp(creds, to, text, attachment) {
   return graphPost('facebook', `${creds.accountId}/messages`, creds.token, payload);
 }
 
+const TELEGRAM_MEDIA = {
+  image: { method: 'sendPhoto', field: 'photo' },
+  video: { method: 'sendVideo', field: 'video' },
+  audio: { method: 'sendAudio', field: 'audio' },
+  document: { method: 'sendDocument', field: 'document' },
+};
+
+// Telegram text ko JSON se bhejta hai. Media ke liye ya to public URL deta hai
+// ya local upload ko multipart me file ki tarah bhejta hai (Telegram hamare
+// server tak khud pahunch nahi sakta, is liye local file attach karni padti hai).
+async function sendTelegram(creds, chatId, text, attachment) {
+  if (!creds.token) return { ok: false, error: 'No Telegram bot token configured' };
+  const id = String(chatId);
+
+  if (!attachment || !attachment.url) {
+    const result = await telegramApi(creds.token, 'sendMessage', {
+      chat_id: id,
+      text: text || '',
+      disable_web_page_preview: true,
+    });
+    return result.ok ? { ok: true, data: result.data } : { ok: false, error: result.error };
+  }
+
+  const media = TELEGRAM_MEDIA[attachment.type] || TELEGRAM_MEDIA.document;
+  const form = new FormData();
+  form.append('chat_id', id);
+  if (text) form.append('caption', text);
+
+  try {
+    if (/^https?:\/\//i.test(attachment.url)) {
+      form.append(media.field, attachment.url);
+    } else if (attachment.url.startsWith('/uploads/')) {
+      const filePath = path.join(config.uploadDir, path.basename(attachment.url));
+      const buffer = fs.readFileSync(filePath);
+      form.append(media.field, new Blob([buffer]), path.basename(filePath));
+    } else {
+      return { ok: false, error: 'Telegram media URL public nahi hai' };
+    }
+
+    const res = await fetch(botUrl(creds.token, media.method), {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      return { ok: false, error: data.description || `HTTP ${res.status}` };
+    }
+    return { ok: true, data: data.result };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 // channel + optional conversation ka data. Purana call signature
 // (channel, externalId, ...) bhi chal raha hai taake koi purana caller na toote.
 function dispatchSend(channelOrConversation, externalId, text, attachment) {
@@ -172,6 +240,8 @@ function dispatchSend(channelOrConversation, externalId, text, attachment) {
       return sendInstagram(creds, externalId, text, attachment);
     case 'whatsapp':
       return sendWhatsApp(creds, externalId, text, attachment);
+    case 'telegram':
+      return sendTelegram(creds, externalId, text, attachment);
     default:
       return Promise.resolve({ ok: false, error: `Unknown channel: ${channel}` });
   }
@@ -181,6 +251,19 @@ function dispatchSend(channelOrConversation, externalId, text, attachment) {
 async function describeAccount(channel, connectionId) {
   const creds = resolveCredentials(channel, connectionId);
   if (!creds.token) return { ok: false, error: 'No token configured' };
+
+  if (channel === 'telegram') {
+    const result = await telegramApi(creds.token, 'getMe', {});
+    if (!result.ok) return { ok: false, error: result.error };
+    const bot = result.data || {};
+    return {
+      ok: true,
+      id: bot.id ? String(bot.id) : creds.accountId || null,
+      name: [bot.first_name, bot.last_name].filter(Boolean).join(' ') || bot.username || null,
+      username: bot.username || null,
+    };
+  }
+
   try {
     const host = creds.apiHost === 'instagram' ? 'instagram' : 'facebook';
     const node = creds.accountId || 'me';

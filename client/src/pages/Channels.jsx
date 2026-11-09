@@ -17,9 +17,13 @@ const FIELDS = {
     { key: 'token', label: 'WhatsApp Token', required: true, secret: true, placeholder: 'EAAG...' },
     { key: 'wa_own_number', label: 'Apna number (optional)', placeholder: '15551234567', hint: 'Apne message ka echo filter karne ke liye' },
   ],
+  telegram: [
+    { key: 'token', label: 'Bot Token', required: true, secret: true, placeholder: '123456789:AA...', hint: 'BotFather se milta hai (@BotFather → /newbot)' },
+    { key: 'account_id', label: 'Bot ID (optional)', placeholder: 'auto-detect', hint: 'Khali chhorein to token se khud pata chal jayega' },
+  ],
 };
 
-const EMPTY = { facebook: {}, instagram: {}, whatsapp: {} };
+const EMPTY = { facebook: {}, instagram: {}, whatsapp: {}, telegram: {} };
 
 function Field({ label, value, onChange, type = 'text', required, placeholder, hint, secret }) {
   const [reveal, setReveal] = useState(false);
@@ -201,7 +205,7 @@ function ConnectionCard({ conn, onChanged, onToast }) {
           >
             {busy === 'verify' ? 'Checking…' : 'Test token'}
           </button>
-          {conn.channel !== 'whatsapp' && (
+          {conn.channel !== 'whatsapp' && conn.channel !== 'telegram' && (
             <button
               onClick={syncOld}
               disabled={busy === 'sync'}
@@ -249,26 +253,32 @@ function ConnectionCard({ conn, onChanged, onToast }) {
               label={f.label}
               required={f.required}
               secret={f.secret}
-              placeholder={f.placeholder}
+              placeholder={
+                f.key === 'token' && conn.has_token ? conn.token_masked : f.placeholder
+              }
               hint={f.hint}
               value={form[f.key]}
               onChange={set(f.key)}
             />
           ))}
-          <Field
-            label="Naya token (khali chhorein to purana rahega)"
-            value={form.token}
-            onChange={set('token')}
-            secret
-            placeholder={conn.has_token ? conn.token_masked : 'EAAG...'}
-          />
-          <Field
-            label="App Secret (optional - signature verify ke liye)"
-            value={form.app_secret}
-            onChange={set('app_secret')}
-            secret
-            placeholder={conn.has_app_secret ? conn.app_secret_masked : 'app secret'}
-          />
+          {conn.channel !== 'telegram' && (
+            <>
+              <Field
+                label="Naya token (khali chhorein to purana rahega)"
+                value={form.token}
+                onChange={set('token')}
+                secret
+                placeholder={conn.has_token ? conn.token_masked : 'EAAG...'}
+              />
+              <Field
+                label="App Secret (optional - signature verify ke liye)"
+                value={form.app_secret}
+                onChange={set('app_secret')}
+                secret
+                placeholder={conn.has_app_secret ? conn.app_secret_masked : 'app secret'}
+              />
+            </>
+          )}
           <button
             onClick={save}
             disabled={busy === 'save'}
@@ -286,7 +296,11 @@ function ConnectionCard({ conn, onChanged, onToast }) {
             value={callbackUrl}
             onChange={setCallbackUrl}
             placeholder="https://your-domain.com/webhook"
-            hint="ngrok / Render URL use karein — Meta sirf public HTTPS maangta hai"
+            hint={
+              conn.channel === 'telegram'
+                ? 'Telegram bot ka webhook is public HTTPS URL par set hoga'
+                : 'ngrok / Render URL use karein — Meta sirf public HTTPS maangta hai'
+            }
           />
         </div>
         <button
@@ -294,7 +308,11 @@ function ConnectionCard({ conn, onChanged, onToast }) {
           disabled={busy === 'subscribe'}
           className="mb-0.5 rounded-lg border border-brand px-3 py-2 text-xs font-semibold text-brand transition hover:bg-brand-soft disabled:opacity-50"
         >
-          {busy === 'subscribe' ? 'Subscribing…' : 'Subscribe on Meta'}
+          {busy === 'subscribe'
+            ? 'Subscribing…'
+            : conn.channel === 'telegram'
+              ? 'Set Telegram webhook'
+              : 'Subscribe on Meta'}
         </button>
       </div>
     </div>
@@ -324,7 +342,12 @@ function AddForm({ onAdded, onToast }) {
         account_id: form.account_id || '',
         token: form.token || '',
         wa_own_number: form.wa_own_number || '',
-        api_host: channel === 'instagram' ? 'instagram' : 'facebook',
+        api_host:
+          channel === 'telegram'
+            ? 'telegram'
+            : channel === 'instagram'
+              ? 'instagram'
+              : 'facebook',
       });
       onToast('Connection add ho gaya');
       setForm({});
@@ -373,8 +396,12 @@ function AddForm({ onAdded, onToast }) {
             onChange={set(f.key)}
           />
         ))}
-        <Field label="App ID (subscribe ke liye)" value={form.app_id} onChange={set('app_id')} placeholder="1234567890" />
-        <Field label="App Secret (signature verify)" value={form.app_secret} onChange={set('app_secret')} secret placeholder="app secret" />
+        {channel !== 'telegram' && (
+          <>
+            <Field label="App ID (subscribe ke liye)" value={form.app_id} onChange={set('app_id')} placeholder="1234567890" />
+            <Field label="App Secret (signature verify)" value={form.app_secret} onChange={set('app_secret')} secret placeholder="app secret" />
+          </>
+        )}
       </div>
 
       <button
@@ -420,8 +447,9 @@ export default function Channels() {
         Channels
       </h1>
       <p className="mt-1 text-sm text-slate-500">
-        Facebook, Instagram aur WhatsApp ki API credentials yahan add karein. Tokens encrypt hoke
-        database me save hote hain, aur har channel ke messages neeche Inbox me aate hain.
+        Facebook, Instagram, WhatsApp aur Telegram ki API credentials yahan add karein. Tokens
+        encrypt hoke database me save hote hain, aur har channel ke messages neeche Inbox me aate
+        hain.
       </p>
 
       {toast && (
@@ -476,7 +504,12 @@ export default function Channels() {
             Callback URL aur Verify Token Meta ke dashboard se exactly wahi daalein jo yahan likha
             hai.
           </li>
-          <li>Har channel ke liye alag connection ban sakta hai — aik page, aik IG, aik number.</li>
+          <li>
+            <strong>Telegram:</strong> BotFather se bot banayein, bot token yahan paste karein,
+            phir <em>Set Telegram webhook</em> dabayein. Bot ko pehle /start message bhejein taake
+            woh aap ko message kar sake.
+          </li>
+          <li>Har channel ke liye alag connection ban sakta hai — aik page, aik IG, aik number, aik bot.</li>
         </ul>
       </div>
     </div>

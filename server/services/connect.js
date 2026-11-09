@@ -1,6 +1,7 @@
 const config = require('../config');
 const db = require('../db');
 const { graphUrl } = require('./send');
+const { telegramApi, secretForToken } = require('./telegram');
 
 // Meta Graph se token verify karna - agar token valid hai to account ka
 // naam/ID bhi mil jata hai, jo UI me dikhane ke liye best hai.
@@ -8,6 +9,19 @@ async function verifyToken(channel, creds) {
   if (!creds || !creds.token) {
     return { ok: false, error: 'Access token missing' };
   }
+
+  if (channel === 'telegram') {
+    const result = await telegramApi(creds.token, 'getMe', {});
+    if (!result.ok) return { ok: false, error: result.error };
+    const bot = result.data || {};
+    return {
+      ok: true,
+      id: bot.id ? String(bot.id) : null,
+      name: [bot.first_name, bot.last_name].filter(Boolean).join(' ') || bot.username || null,
+      username: bot.username || null,
+    };
+  }
+
   const host = creds.apiHost === 'instagram' ? 'instagram' : 'facebook';
   const node = creds.accountId || 'me';
   try {
@@ -34,8 +48,34 @@ async function verifyToken(channel, creds) {
 // Do step: app-level subscription + page/IG-level subscribe.
 async function subscribeWebhook(channel, creds, callbackUrl) {
   if (!creds || !creds.token) return { ok: false, error: 'Access token missing' };
-  if (!creds.appId) return { ok: false, error: 'App ID missing hai - subscription ke liye chahiye' };
   if (!callbackUrl) return { ok: false, error: 'Public callback URL chahiye (server ke public host par)' };
+
+  // Telegram apne aap webhook set karta hai. URL me token ka hash daalte hain
+  // taake multi-bot setup me sahi bot ka update pahunch sake, aur secret_token
+  // se confirm hota hai ke request Telegram hi bhej raha hai.
+  if (channel === 'telegram') {
+    // URL me connection id nahi, token ka hash rakhte hain. Render deploy par
+    // DB reset hone se connection id badal sakti hai, lekin token same rehne
+    // par hash same rehta hai - webhook phir bhi sahi jagah pahunchta hai.
+    const secret = secretForToken(creds.token);
+    const url = `${callbackUrl.replace(/\/$/, '')}/telegram/${secret}`;
+    const result = await telegramApi(creds.token, 'setWebhook', {
+      url,
+      secret_token: secret,
+      allowed_updates: ['message'],
+      drop_pending_updates: true,
+    });
+    if (!result.ok) return { ok: false, error: result.error };
+    return {
+      ok: true,
+      success: true,
+      object: 'telegram',
+      message: 'Telegram webhook set',
+      url,
+    };
+  }
+
+  if (!creds.appId) return { ok: false, error: 'App ID missing hai - subscription ke liye chahiye' };
 
   const objectMap = {
     facebook: 'page',
@@ -83,6 +123,9 @@ async function subscribeWebhook(channel, creds, callbackUrl) {
 // Page/IG ko app se linked karta hai (page-level subscribe).
 async function subscribeAccount(channel, creds) {
   if (!creds || !creds.token) return { ok: false, error: 'Access token missing' };
+  // Telegram me page/IG jaisa account-level subscribe nahi hota - webhook
+  // setWebhook se seedha bot par lag jata hai.
+  if (channel === 'telegram') return { ok: true, success: true };
   if (!creds.accountId) return { ok: false, error: 'Account ID missing hai' };
 
   // Instagram ke liye account_id = IG account id, page ke liye page id.

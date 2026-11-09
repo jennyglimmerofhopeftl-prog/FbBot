@@ -7,6 +7,7 @@ const db = require('./db');
 const { dispatchSend, graphUrl } = require('./services/send');
 const { saveUpload, isAllowedMime, mediaTypeFor } = require('./services/uploads');
 const { verifyToken, subscribeWebhook, subscribeAccount } = require('./services/connect');
+const { telegramApi } = require('./services/telegram');
 const { syncConnection } = require('./services/sync');
 const webhooklog = require('./services/webhooklog');
 const { broadcast } = require('./realtime');
@@ -292,15 +293,15 @@ router.post('/conversations/:id/read', requireAuth, (req, res) => {
 });
 
 // ------------------------------------------------------------ connections
-// Facebook / Instagram / WhatsApp ki API credentials UI se add hoti hain.
-// Tokens DB me encrypted rehte hain (server/services/crypto.js).
+// Facebook / Instagram / WhatsApp / Telegram ki API credentials UI se add hoti
+// hain. Tokens DB me encrypted rehte hain (server/services/crypto.js).
 
-const CHANNELS = ['facebook', 'instagram', 'whatsapp'];
+const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'telegram'];
 
 function readConnectionInput(body) {
   const channel = String(body.channel || '').toLowerCase();
   if (!CHANNELS.includes(channel)) {
-    return { error: 'channel must be one of: facebook, instagram, whatsapp' };
+    return { error: 'channel must be one of: facebook, instagram, whatsapp, telegram' };
   }
   const name = String(body.name || '').trim();
   if (!name) return { error: 'name is required' };
@@ -317,7 +318,11 @@ function readConnectionInput(body) {
     // Facebook Login tokens (EAA...) graph.facebook.com par. Galat host se
     // "Cannot parse access token" aata hai, is liye token se detect karte hain.
     apiHost:
-      channel === 'instagram' && token.startsWith('IGAA') ? 'instagram' : 'facebook',
+      channel === 'telegram'
+        ? 'telegram'
+        : channel === 'instagram' && token.startsWith('IGAA')
+          ? 'instagram'
+          : 'facebook',
     extra: {},
   };
 
@@ -336,7 +341,10 @@ function readConnectionInput(body) {
   if (channel === 'whatsapp' && !input.accountId) {
     return { error: 'account_id (Phone Number ID) is required for WhatsApp' };
   }
-  if (!input.token) return { error: 'token (access token) is required' };
+  // Telegram bot id getMe se khud aa jati hai - account_id optional hai.
+  if (!input.token) {
+    return { error: channel === 'telegram' ? 'token (Telegram bot token) is required' : 'token (access token) is required' };
+  }
 
   return { input };
 }
@@ -345,11 +353,21 @@ router.get('/connections', requireAuth, requireAdmin, (req, res) => {
   res.json({ connections: db.listConnections() });
 });
 
-router.post('/connections', requireAuth, requireAdmin, (req, res) => {
+router.post('/connections', requireAuth, requireAdmin, async (req, res) => {
   const { input, error } = readConnectionInput(req.body || {});
   if (error) return res.status(400).json({ error });
 
-  const created = db.createConnection(input);
+  let created = db.createConnection(input);
+
+  // Telegram me bot id/username token se khud mil jate hain. UI me account_id
+  // khali chhorne par bhi connection complete dikhe.
+  if (created.channel === 'telegram') {
+    const verified = await verifyToken('telegram', created);
+    if (verified.ok && verified.id) {
+      created = db.updateConnection(created.id, { accountId: String(verified.id) }) || created;
+    }
+  }
+
   broadcast('connections', {});
   res.status(201).json({ connection: toPublic(created) });
 });
@@ -481,6 +499,10 @@ router.get('/connections/:id/webhook-status', requireAuth, requireAdmin, async (
   };
 
   try {
+    if (conn.channel === 'telegram') {
+      const info = await telegramApi(conn.token, 'getWebhookInfo', {});
+      out.telegram_webhook = info.ok ? info.data : { error: info.error };
+    }
     if (conn.channel === 'facebook' || conn.channel === 'instagram') {
       const host = conn.apiHost === 'instagram' ? 'instagram' : 'facebook';
       const url =
@@ -645,6 +667,11 @@ router.post('/connections/:id/sync', requireAuth, requireAdmin, async (req, res)
   const id = Number(req.params.id);
   const conn = db.getConnection(id);
   if (!conn) return res.status(404).json({ error: 'Connection not found' });
+  if (conn.channel === 'telegram') {
+    return res.status(400).json({
+      error: 'Telegram me purani chats import nahi hoti - bot sirf naye messages receive karta hai.',
+    });
+  }
 
   const result = await syncConnection(conn);
   const status = result.error ? 400 : 200;

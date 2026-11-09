@@ -5,7 +5,8 @@ const SERVICES = [
   { icon: "💬", title: "Facebook Automation", desc: "Facebook Messenger pe smart replies, orders aur support — 24/7 automatic." },
   { icon: "📸", title: "Instagram Automation", desc: "Instagram DMs pe automated messaging, replies aur workflows, poora control ke sath." },
   { icon: "🟢", title: "WhatsApp Automation", desc: "WhatsApp Business pe automated messaging, replies aur workflow, bharosemand system." },
-  { icon: "🚀", title: "Omnichannel Inbox", desc: "Facebook, Instagram aur WhatsApp — sab ek hi dashboard se handle karein." },
+  { icon: "✈️", title: "Telegram Automation", desc: "Telegram bots se DMs, replies aur support — poora control ek hi jagah." },
+  { icon: "🚀", title: "Omnichannel Inbox", desc: "Facebook, Instagram, WhatsApp aur Telegram — sab ek hi dashboard se handle karein." },
   { icon: "🧠", title: "Smart Agent Tools", desc: "Notes, forward, assign aur customer details — team wali cheezein smart tarike se." },
   { icon: "🎯", title: "Reliable & Scalable", desc: "Bharose kaam karte hain — jab aap ka kaam barhe, system sath barhe." },
 ];
@@ -61,7 +62,7 @@ export default function Landing() {
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-600">
             The wait is over. ZEUS Bots runs your{" "}
             <span className="font-semibold text-slate-800">
-              Facebook, Instagram & WhatsApp support
+              Facebook, Instagram, WhatsApp & Telegram support
             </span>{" "}
             from one smart inbox — designed to save time, improve efficiency, and handle
             repetitive tasks with precision. ⚡
@@ -91,7 +92,7 @@ export default function Landing() {
           </span>
         </h2>
         <p className="mx-auto mt-2 max-w-2xl text-center text-slate-500">
-          Facebook Messenger, Instagram DMs aur WhatsApp Business Cloud API ke saath aik hi
+          Facebook Messenger, Instagram DMs, WhatsApp Business Cloud API aur Telegram ke saath aik hi
           dashboard mein handle karein — automation aur human support, dono smart tarike se.
         </p>
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -150,7 +151,7 @@ export default function Landing() {
             ZEUS BOTS — AUTOMATE SMART. MOVE FAST.
           </h2>
           <p className="mt-2 text-white/90">
-            Facebook · Instagram · WhatsApp — ek hi dashboard. Apna support inbox kholo.
+            Facebook · Instagram · WhatsApp · Telegram — ek hi dashboard. Apna support inbox kholo.
           </p>
           <Link
             to="/login"
@@ -169,7 +170,7 @@ export default function Landing() {
             <span className="text-sm font-semibold text-slate-600">ZEUS Bots</span>
           </div>
           <p className="text-xs text-slate-400">
-            ⚡ One ZEUS. Endless Possibilities. · Facebook · Instagram · WhatsApp
+            ⚡ One ZEUS. Endless Possibilities. · Facebook · Instagram · WhatsApp · Telegram
           </p>
         </div>
       </footer>

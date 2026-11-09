@@ -26,6 +26,9 @@ const config = {
   waPhoneNumberId: process.env.WA_PHONE_NUMBER_ID || '',
   waOwnNumber: (process.env.WA_OWN_NUMBER || '').replace(/[^0-9]/g, ''),
 
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramAccountId: process.env.TELEGRAM_ACCOUNT_ID || '',
+
   graphVersion: process.env.GRAPH_VERSION || 'v21.0',
 
   uploadDir: process.env.UPLOAD_DIR

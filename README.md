@@ -1,8 +1,9 @@
-# OmniInbox — Facebook Messenger + Instagram + WhatsApp ka ek hi inbox
+# OmniInbox — Facebook Messenger + Instagram + WhatsApp + Telegram ka ek hi inbox
 
-Aik dashboard jis mein Facebook Page, Instagram DM aur WhatsApp ke saare messages
-aate hain, aur aap ke agents wahin se reply karte hain. Teeno channels Meta ke
-hain, is liye ek hi Meta App + ek hi webhook URL kaam karti hai.
+Aik dashboard jis mein Facebook Page, Instagram DM, WhatsApp aur Telegram ke saare
+messages aate hain, aur aap ke agents wahin se reply karte hain. Facebook,
+Instagram aur WhatsApp Meta ke hain (ek hi Meta App + webhook URL), jab ke
+Telegram ka apna bot token + webhook hota hai.
 
 ## Tech
 
@@ -208,6 +209,21 @@ WA_OWN_NUMBER=<apna_number_without_+55 e.g. 15551234567>
 
 ---
 
+## 4) Telegram connect (optional)
+
+1. Telegram me [@BotFather](https://t.me/BotFather) ko open karo → `/newbot` → naam/username do
+2. BotFather se **bot token** copy karo (`123456789:AA...`)
+3. Dashboard → **Channels** → **Telegram** tab → bot token paste karke **Add connection**
+4. Connection card par **Set Telegram webhook** dabao (public HTTPS URL, e.g. Render URL)
+5. Apne bot ko Telegram me `/start` bhejo — chat Inbox me aa jayegi aur wahan se reply bhej sakte ho
+
+> Render par DB reset hone se connection delete ho jati hai. Permanent setup ke liye
+> Render env me `TELEGRAM_BOT_TOKEN=<bot token>` add kar dein — server start par
+> connection khud ban jayegi aur webhook URL (token hash) same rehne ki wajah se
+> dobara subscribe karne ki zaroorat nahi padegi.
+
+---
+
 ## Roles
 
 Teen roles hain — **owner** > **admin** > **agent**:
@@ -233,6 +249,7 @@ Teen roles hain — **owner** > **admin** > **agent**:
 | Method | Endpoint | Kaam |
 |---|---|---|
 | POST | `/webhook` | Meta ke saare channel events yahan aate hain |
+| POST | `/webhook/telegram/:secret` | Telegram bot updates (secret = token ka hash) |
 | GET | `/webhook?hub.verify_token=…` | Meta subscription verification |
 | POST | `/api/auth/login` | agent login → JWT |
 | GET | `/api/conversations?channel=&status=` | inbox list |

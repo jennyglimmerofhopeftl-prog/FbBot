@@ -10,6 +10,26 @@ const events = [];
 function add(payload, extra = {}) {
   try {
     const p = payload || {};
+
+    // Telegram update ka shape Meta se bilkul alag hai.
+    if (p.update_id !== undefined) {
+      const m = p.message || p.edited_message || p.channel_post || {};
+      events.unshift({
+        at: new Date().toISOString(),
+        object: 'telegram',
+        entry_id: (m.chat && m.chat.id) || null,
+        events: m.message_id ? 1 : 0,
+        changes: 0,
+        sender: (m.from && m.from.id) || null,
+        recipient: (m.chat && m.chat.id) || null,
+        text: m.text || m.caption || null,
+        signature_ok: extra.signatureOk === undefined ? null : !!extra.signatureOk,
+        raw: JSON.stringify(p).slice(0, 2000),
+      });
+      if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
+      return;
+    }
+
     const entry = (p.entry || [])[0] || {};
     const messaging = entry.messaging || [];
     const changes = entry.changes || [];

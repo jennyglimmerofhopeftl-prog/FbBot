@@ -36,7 +36,7 @@ async function syncConnection(conn) {
   const fields = FIELD_SETS[conn.channel];
   if (!fields) {
     result.error =
-      "WhatsApp ki purani messages na koi history API hai na webhook ke alawa - sirf naye messages aate hain. (Facebook/Instagram par yeh kaam karta hai.)";
+      "WhatsApp/Telegram ki purani messages na koi history API hai na webhook ke alawa - sirf naye messages aate hain. (Facebook/Instagram par yeh kaam karta hai.)";
     return result;
   }
   if (!conn.token) {

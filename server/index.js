@@ -38,7 +38,7 @@ async function autoSyncIfEmpty() {
 
   const conns = db
     .listConnections()
-    .filter((c) => c.enabled && c.has_token && c.channel !== 'whatsapp')
+    .filter((c) => c.enabled && c.has_token && c.channel !== 'whatsapp' && c.channel !== 'telegram')
     .map((c) => db.getConnection(c.id))
     .filter(Boolean);
 

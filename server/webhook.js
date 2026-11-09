@@ -3,6 +3,8 @@ const express = require('express');
 const config = require('./config');
 const db = require('./db');
 const { resolveContact } = require('./services/userinfo');
+const { saveUpload } = require('./services/uploads');
+const { telegramApi, secretForToken, fileUrl } = require('./services/telegram');
 const webhooklog = require('./services/webhooklog');
 const { broadcast } = require('./realtime');
 
@@ -207,6 +209,216 @@ function ingestWhatsApp(entry) {
     }
   }
 }
+
+// --------------------------------------------------------------- Telegram
+// Telegram update me message.photo/video/document etc. hote hain. Sab se bara
+// photo size last hota hai.
+function telegramMediaFromMessage(msg) {
+  if (Array.isArray(msg.photo) && msg.photo.length) {
+    const photo = msg.photo[msg.photo.length - 1];
+    return {
+      type: 'image',
+      mediaType: 'image',
+      fileId: photo.file_id,
+      mime: 'image/jpeg',
+      placeholder: '[Photo]',
+      fileName: `telegram-photo-${msg.message_id}.jpg`,
+    };
+  }
+  if (msg.video) {
+    return {
+      type: 'video',
+      mediaType: 'video',
+      fileId: msg.video.file_id,
+      mime: msg.video.mime_type || 'video/mp4',
+      placeholder: '[Video]',
+      fileName: msg.video.file_name || `telegram-video-${msg.message_id}.mp4`,
+    };
+  }
+  if (msg.animation) {
+    return {
+      type: 'video',
+      mediaType: 'video',
+      fileId: msg.animation.file_id,
+      mime: msg.animation.mime_type || 'video/mp4',
+      placeholder: '[Animation]',
+      fileName: msg.animation.file_name || `telegram-animation-${msg.message_id}.mp4`,
+    };
+  }
+  if (msg.voice) {
+    return {
+      type: 'audio',
+      mediaType: 'audio',
+      fileId: msg.voice.file_id,
+      mime: msg.voice.mime_type || 'audio/ogg',
+      placeholder: '[Voice message]',
+      fileName: `telegram-voice-${msg.message_id}.ogg`,
+    };
+  }
+  if (msg.audio) {
+    return {
+      type: 'audio',
+      mediaType: 'audio',
+      fileId: msg.audio.file_id,
+      mime: msg.audio.mime_type || 'audio/mpeg',
+      placeholder: '[Audio]',
+      fileName: msg.audio.file_name || `telegram-audio-${msg.message_id}.mp3`,
+    };
+  }
+  if (msg.sticker) {
+    return {
+      type: 'sticker',
+      mediaType: 'image',
+      fileId: msg.sticker.file_id,
+      mime: 'image/webp',
+      placeholder: '[Sticker]',
+      fileName: `telegram-sticker-${msg.message_id}.webp`,
+    };
+  }
+  if (msg.document) {
+    return {
+      type: 'document',
+      mediaType: 'document',
+      fileId: msg.document.file_id,
+      mime: msg.document.mime_type || 'application/octet-stream',
+      placeholder: '[Document]',
+      fileName: msg.document.file_name || `telegram-document-${msg.message_id}`,
+    };
+  }
+  return null;
+}
+
+// Telegram file server se download karke apne uploads (ya R2) me save karta
+// hai. Bot token wala direct file URL browser ko nahi bhejte - token leak ho
+// jata. Fail ho to message placeholder ke sath chala jata hai.
+async function downloadTelegramMedia(token, media) {
+  const info = await telegramApi(token, 'getFile', { file_id: media.fileId });
+  if (!info.ok || !info.data || !info.data.file_path) {
+    console.warn(`[webhook] telegram getFile fail: ${info.error || 'no file_path'}`);
+    return null;
+  }
+  try {
+    const res = await fetch(fileUrl(token, info.data.file_path), {
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const saved = await saveUpload(buffer, media.fileName, media.mime);
+    return saved.url;
+  } catch (err) {
+    console.warn(`[webhook] telegram media save fail: ${err.message}`);
+    return null;
+  }
+}
+
+async function ingestTelegram(connection, update) {
+  const msg = update.message || update.channel_post;
+  if (!msg) return; // edited_message, callback_query etc. abhi ignore
+
+  const chat = msg.chat || {};
+  if (!chat.id) return;
+
+  const from = msg.from || {};
+  const externalId = String(chat.id);
+  const fromName = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || '';
+  // Group me sender ka naam nahi, group ka title dikhna chahiye.
+  const contactName =
+    chat.type === 'private' ? fromName || externalId : chat.title || fromName || externalId;
+
+  const conversation = db.findOrCreateConversation({
+    channel: 'telegram',
+    externalId,
+    contactName,
+    connectionId: connection.id,
+  });
+
+  db.incrementUnread(conversation.id, false);
+  db.reopenIfResolved(conversation.id);
+
+  const media = telegramMediaFromMessage(msg);
+  if (media) {
+    const mediaUrl = await downloadTelegramMedia(connection.token, media);
+    const body = msg.caption || media.placeholder;
+    const record = db.addMessage({
+      conversationId: conversation.id,
+      direction: 'inbound',
+      body,
+      type: media.type,
+      metaId: msg.message_id ? String(msg.message_id) : null,
+      mediaType: media.mediaType,
+      mediaUrl,
+      sender: 'customer',
+    });
+    const full = db.getConversation(conversation.id);
+    broadcast('message', { conversation: full, message: record });
+    console.log(`[webhook] telegram <- from ${contactName}: ${body}`);
+    return;
+  }
+
+  const body = msg.text || msg.caption;
+  if (!body) return;
+
+  const record = db.addMessage({
+    conversationId: conversation.id,
+    direction: 'inbound',
+    body,
+    type: 'text',
+    metaId: msg.message_id ? String(msg.message_id) : null,
+    sender: 'customer',
+  });
+  const full = db.getConversation(conversation.id);
+  broadcast('message', { conversation: full, message: record });
+  console.log(`[webhook] telegram <- from ${contactName}: ${body}`);
+}
+
+// Telegram webhook URL me bot token ka SHA-256 hash hota hai. DB reset hone
+// par connection id badal sakti hai, lekin token/hash same rehta hai - is liye
+// URL stable rehta hai. Har webhook par matching connection dhoondte hain.
+function findTelegramConnectionBySecret(secret) {
+  for (const row of db.listConnections()) {
+    if (row.channel !== 'telegram' || !row.enabled || !row.has_token) continue;
+    const conn = db.getConnection(row.id);
+    if (conn && conn.token && secretForToken(conn.token) === secret) return conn;
+  }
+  return null;
+}
+
+// POST /webhook/telegram/:secret - Telegram bot updates. Secret token header
+// se verify hota hai; URL me token hash hone se multi-bot support milta hai.
+router.post(
+  '/telegram/:secret',
+  express.raw({ type: '*/*', limit: '25mb' }),
+  async (req, res) => {
+    const secret = String(req.params.secret || '');
+    const connection = findTelegramConnectionBySecret(secret);
+    if (!connection) return res.sendStatus(404);
+
+    const provided = req.get('x-telegram-bot-api-secret-token') || '';
+    if (provided !== secret) {
+      console.warn('[webhook] telegram secret mismatch');
+      return res.sendStatus(403);
+    }
+
+    let payload = req.body;
+    if (Buffer.isBuffer(payload)) {
+      try {
+        payload = JSON.parse(payload.toString('utf8'));
+      } catch {
+        return res.sendStatus(400);
+      }
+    }
+    webhooklog.add(payload, { signatureOk: true });
+
+    // Telegram ko foran 200 chahiye, warna wohi update dobara bhejta rehta hai.
+    res.status(200).send('OK');
+
+    try {
+      await ingestTelegram(connection, payload || {});
+    } catch (err) {
+      console.error('[webhook] telegram ingest error:', err);
+    }
+  }
+);
 
 // POST /webhook - receives events from all connected Meta apps
 router.post('/', express.raw({ type: ['application/json', 'application/*+json'] }), async (req, res) => {

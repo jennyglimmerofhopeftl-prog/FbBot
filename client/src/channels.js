@@ -2,6 +2,7 @@ export const CHANNELS = {
   facebook: { label: 'Facebook', short: 'FB', color: '#1877f2' },
   instagram: { label: 'Instagram', short: 'IG', color: '#e4405f' },
   whatsapp: { label: 'WhatsApp', short: 'WA', color: '#075e54' },
+  telegram: { label: 'Telegram', short: 'TG', color: '#229ED9' },
 };
 
 export function channelOf(key) {
