@@ -146,7 +146,7 @@ function ReplyButton({ onClick, after = false }) {
   );
 }
 
-function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit }) {
+function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, showAgent }) {
   if (m.sender === 'note') {
     return (
       <div className="flex justify-center">
@@ -177,30 +177,38 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit }) {
       ) : (
         <ReplyButton onClick={onReply} />
       )}
-      <div
-        className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${
-          mine
-            ? 'bg-gradient-to-br from-brand to-lemon text-white shadow-lemon/30'
-            : 'bg-white text-slate-800'
-        } ${replying ? 'ring-2 ring-lemon' : ''}`}
-      >
-        <QuoteBar quote={m.reply_to} mine={mine} />
-        <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" mine={mine} />
-        {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
-        <div className={`mt-1 flex items-center justify-end gap-2 text-[10px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
-          {m.edited_at ? <span className="italic">(edited)</span> : null}
-          {mine && m.body && !m.media_url ? (
-            <button
-              type="button"
-              onClick={onEdit}
-              title="Edit karo — corrected text naya message ban kar jayega"
-              className={mine ? 'text-white/70 transition hover:text-white' : 'text-slate-400 transition hover:text-brand'}
-            >
-              ✏️
-            </button>
-          ) : null}
-          <span>{formatClock(m.created_at)}</span>
+      <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+        <div
+          className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${
+            mine
+              ? 'bg-gradient-to-br from-brand to-lemon text-white shadow-lemon/30'
+              : 'bg-white text-slate-800'
+          } ${replying ? 'ring-2 ring-lemon' : ''}`}
+        >
+          <QuoteBar quote={m.reply_to} mine={mine} />
+          <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" mine={mine} />
+          {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+          <div className={`mt-1 flex items-center justify-end gap-2 text-[10px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
+            {m.edited_at ? <span className="italic">(edited)</span> : null}
+            {mine && m.body && !m.media_url ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                title="Edit karo — corrected text naya message ban kar jayega"
+                className={mine ? 'text-white/70 transition hover:text-white' : 'text-slate-400 transition hover:text-brand'}
+              >
+                ✏️
+              </button>
+            ) : null}
+            <span>{formatClock(m.created_at)}</span>
+          </div>
         </div>
+        {showAgent && mine ? (
+          <p className="mt-1 px-1 text-[10px] text-slate-400">
+            {m.agent_id ? `Agent #${m.agent_id}` : 'Agent #—'}
+            {m.agent_name ? ` · ${m.agent_name}` : ''}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -225,6 +233,7 @@ export default function ChatWindow({
   onError,
   myId,
   isStaff,
+  showAgent,
 }) {
   const [text, setText] = useState('');
   const [pending, setPending] = useState([]);
@@ -547,6 +556,7 @@ export default function ChatWindow({
               <MessageBubble
                 key={m.id}
                 m={m}
+                showAgent={showAgent}
                 onReply={() => { setEditing(null); setReplyingTo(m); }}
                 onEdit={() => startEdit(m)}
                 replying={replyingTo?.id === m.id}

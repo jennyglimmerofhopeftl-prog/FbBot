@@ -38,7 +38,7 @@ npm start                   # http://localhost:4000
 ```
 
 Login:
-- Owner: `owner@omnichannel.local` / `owner123` (pehli dafa se automatically bana diya jata hai)
+- Owner: `mazijutt781@gmail.com` / `Jet47-Jutt` (pehli dafa se automatically bana diya jata hai)
 - Admin: `admin@omnichannel.local` / `admin123` (pehli dafa se automatically bana diya jata hai)
 
 > Production mein dono passwords `.env` (`OWNER_PASSWORD`, `ADMIN_PASSWORD`) se

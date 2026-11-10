@@ -536,6 +536,7 @@ export default function ChatWorkspace({ agentView = false }) {
           onError={setError}
           myId={user?.id}
           isStaff={isStaff}
+          showAgent={user?.role === 'owner'}
         />
       </div>
     </div>

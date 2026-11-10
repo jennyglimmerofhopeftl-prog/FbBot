@@ -143,6 +143,9 @@ router.post('/conversations/:id/reply', requireAuth, async (req, res) => {
     mediaUrl: mediaUrl || null,
     replyToId: replyToId || null,
   });
+  // Realtime broadcast me bhi agent ka naam ho (owner ko "kis ne reply kiya"
+  // dikhane ke liye).
+  record.agent_name = req.agent.name || null;
 
   const full = db.getConversation(conversation.id);
   broadcast('message', { conversation: full, message: record });
@@ -183,6 +186,7 @@ router.post('/conversations/:id/messages/:messageId/edit', requireAuth, async (r
     metaId: (result.data && result.data.message_id) || null,
     agentId: req.agent.id,
   });
+  record.agent_name = req.agent.name || null;
   const edited = db.markMessageEdited(message.id, record.id);
 
   const full = db.getConversation(conversation.id);

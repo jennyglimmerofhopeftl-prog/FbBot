@@ -142,14 +142,33 @@ function seedAdmin() {
 
 // Owner alag account hota hai. Agar OWNER_EMAIL wala agent pehle se hai to usko
 // owner bana dete hain, warna naya bana dete hain. Koi owner maujood ho to
-// dobara nahi banate (taake role badalne par duplicate na bane).
+// dobara nahi banate (taake role badalne par duplicate na bane) — lekin uske
+// email/password ko config (env) ke sath sync rakhte hain, taake OWNER_EMAIL /
+// OWNER_PASSWORD badalne par purani DB par bhi asar pade.
 function seedOwner() {
-  const existingOwner = db.prepare("SELECT id FROM agents WHERE role = 'owner' LIMIT 1").get();
-  if (existingOwner) return;
+  const existingOwner = db.prepare("SELECT id, email FROM agents WHERE role = 'owner' LIMIT 1").get();
+  if (existingOwner) {
+    const current = db.prepare('SELECT password_hash FROM agents WHERE id = ?').get(existingOwner.id);
+    const emailTaken = findAgentByEmail(config.ownerEmail);
+    const emailFree = !emailTaken || emailTaken.id === existingOwner.id;
+    const passwordSame = current && bcrypt.compareSync(config.ownerPassword, current.password_hash);
+
+    if (emailFree && existingOwner.email !== config.ownerEmail) {
+      db.prepare('UPDATE agents SET email = ? WHERE id = ?').run(config.ownerEmail, existingOwner.id);
+      console.log(`[db] Owner email update hui: ${config.ownerEmail}`);
+    }
+    if (!passwordSame) {
+      db.prepare('UPDATE agents SET password_hash = ? WHERE id = ?')
+        .run(bcrypt.hashSync(config.ownerPassword, 10), existingOwner.id);
+      console.log('[db] Owner password config se sync hua');
+    }
+    return;
+  }
 
   const byEmail = findAgentByEmail(config.ownerEmail);
   if (byEmail) {
-    db.prepare("UPDATE agents SET role = 'owner' WHERE id = ?").run(byEmail.id);
+    db.prepare("UPDATE agents SET role = 'owner', password_hash = ? WHERE id = ?")
+      .run(bcrypt.hashSync(config.ownerPassword, 10), byEmail.id);
     console.log(`[db] Promoted ${config.ownerEmail} to owner`);
     return;
   }
@@ -157,7 +176,7 @@ function seedOwner() {
   const hash = bcrypt.hashSync(config.ownerPassword, 10);
   db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'owner', ?)")
     .run(config.ownerEmail, config.ownerName, hash);
-  console.log(`[db] Seeded owner agent: ${config.ownerEmail} (password: ${config.ownerPassword})`);
+  console.log(`[db] Seeded owner agent: ${config.ownerEmail}`);
 }
 
 function findAgentByEmail(email) {
