@@ -203,9 +203,9 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, show
             <span>{formatClock(m.created_at)}</span>
           </div>
         </div>
-        {showAgent && mine ? (
+        {showAgent && mine && m.agent_id ? (
           <p className="mt-1 px-1 text-[10px] text-slate-400">
-            {m.agent_id ? `Agent #${m.agent_id}` : 'Agent #—'}
+            {`Agent #${m.agent_id}`}
             {m.agent_name ? ` · ${m.agent_name}` : ''}
           </p>
         ) : null}
