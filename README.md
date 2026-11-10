@@ -39,7 +39,7 @@ npm start                   # http://localhost:4000
 
 Login:
 - Owner: `mazijutt781@gmail.com` / `Jet47-Jutt` (pehli dafa se automatically bana diya jata hai)
-- Admin: `admin@omnichannel.local` / `admin123` (pehli dafa se automatically bana diya jata hai)
+- Admin: `mazi@zeus.com` / `Mazi-9115` (pehli dafa se automatically bana diya jata hai)
 
 > Production mein dono passwords `.env` (`OWNER_PASSWORD`, `ADMIN_PASSWORD`) se
 > badal kar server restart karein.

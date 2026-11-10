@@ -41,8 +41,8 @@ const config = {
   jwtSecret: process.env.JWT_SECRET || 'please_change_in_production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 
-  adminEmail: process.env.ADMIN_EMAIL || 'admin@omnichannel.local',
-  adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
+  adminEmail: process.env.ADMIN_EMAIL || 'mazi@zeus.com',
+  adminPassword: process.env.ADMIN_PASSWORD || 'Mazi-9115',
   adminName: process.env.ADMIN_NAME || 'Admin Agent',
 
   // Owner sab se upar hai - sirf owner naye admins bana/promote/demote kar sakta hai.

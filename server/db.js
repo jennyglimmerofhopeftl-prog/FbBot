@@ -140,13 +140,41 @@ try {
 const now = () => Math.floor(Date.now() / 1000);
 
 // ---------------------------------------------------------------- agents
+// Admin account (owner ke neeche). Email/password config (env) se sync rehte
+// hain, taake ADMIN_EMAIL / ADMIN_PASSWORD badalne par purani DB par bhi asar
+// pade. Sirf seeded admin ko touch karte hain — owner ke banaye hue doosre
+// admins waise hi rehte hain.
+const LEGACY_ADMIN_EMAIL = 'admin@omnichannel.local';
+
 function seedAdmin() {
-  const existing = db.prepare('SELECT id FROM agents LIMIT 1').get();
-  if (existing) return;
-  const hash = bcrypt.hashSync(config.adminPassword, 10);
-  db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'admin', ?)")
-    .run(config.adminEmail, config.adminName, hash);
-  console.log(`[db] Seeded admin agent: ${config.adminEmail} (password: ${config.adminPassword})`);
+  const target = findAgentByEmail(config.adminEmail) || findAgentByEmail(LEGACY_ADMIN_EMAIL);
+
+  if (!target) {
+    // Koi agent hi nahi? Naya admin banao. Agar owner ne seeded admin delete
+    // kar diya ho to usay dobara zinda nahi karte.
+    const any = db.prepare('SELECT id FROM agents LIMIT 1').get();
+    if (any) return;
+    db.prepare("INSERT INTO agents (email, name, role, password_hash) VALUES (?, ?, 'admin', ?)")
+      .run(config.adminEmail, config.adminName, bcrypt.hashSync(config.adminPassword, 10));
+    console.log(`[db] Seeded admin agent: ${config.adminEmail}`);
+    return;
+  }
+
+  if (target.role === 'owner') return; // owner account ko chhedna nahi
+
+  if (target.email !== config.adminEmail) {
+    db.prepare('UPDATE agents SET email = ? WHERE id = ?').run(config.adminEmail, target.id);
+    console.log(`[db] Admin email update hui: ${config.adminEmail}`);
+  }
+  if (target.role !== 'admin') {
+    db.prepare("UPDATE agents SET role = 'admin' WHERE id = ?").run(target.id);
+  }
+  const current = db.prepare('SELECT password_hash FROM agents WHERE id = ?').get(target.id);
+  if (!current || !bcrypt.compareSync(config.adminPassword, current.password_hash)) {
+    db.prepare('UPDATE agents SET password_hash = ? WHERE id = ?')
+      .run(bcrypt.hashSync(config.adminPassword, 10), target.id);
+    console.log('[db] Admin password config se sync hua');
+  }
 }
 
 // Owner alag account hota hai. Agar OWNER_EMAIL wala agent pehle se hai to usko
