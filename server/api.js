@@ -10,6 +10,7 @@ const { verifyToken, subscribeWebhook, subscribeAccount } = require('./services/
 const { telegramApi } = require('./services/telegram');
 const { syncConnection } = require('./services/sync');
 const webhooklog = require('./services/webhooklog');
+const dbSnapshot = require('./services/db-snapshot');
 const { broadcast } = require('./realtime');
 
 const router = express.Router();
@@ -83,6 +84,20 @@ router.post('/auth/login', (req, res) => {
 router.get('/auth/me', requireAuth, (req, res) => res.json({ agent: req.agent }));
 
 router.get('/auth/agents', requireAuth, (req, res) => res.json({ agents: db.listAgents() }));
+
+// Deploy ke baad diagnostic: DB counts + R2 snapshot status. Is se pata chalta
+// hai ke chats/agent attribution persist ho rahi hai ya nahi.
+router.get('/db-status', requireAuth, requireAdmin, async (req, res) => {
+  let forced = null;
+  if (req.query.snapshot === '1') {
+    forced = await dbSnapshot.snapshotNow('manual');
+  }
+  res.json({
+    conversations: db.countConversations(),
+    snapshot: dbSnapshot.getStatus(),
+    forced_snapshot: forced,
+  });
+});
 
 // ------------------------------------------------------------ conversations
 router.get('/conversations', requireAuth, (req, res) => {

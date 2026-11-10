@@ -4,6 +4,15 @@ const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const config = require('./config');
 const { encrypt, decrypt, mask } = require('./services/crypto');
+const dbSnapshot = require('./services/db-snapshot');
+
+// Har message write ke foran baad R2 snapshot schedule karo (debounced), taake
+// agent attribution aur naya message deploy se pehle persist ho jaye.
+function touchSnapshot() {
+  try {
+    dbSnapshot.requestSnapshot();
+  } catch {}
+}
 
 fs.mkdirSync(path.dirname(config.dbFile), { recursive: true });
 const db = new DatabaseSync(config.dbFile);
@@ -520,6 +529,7 @@ function addMessage({ conversationId, direction, body, type = 'text', metaId = n
   if (touchConversation) {
     db.prepare('UPDATE conversations SET last_message_at = ? WHERE id = ?').run(t, conversationId);
   }
+  touchSnapshot();
   const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
   if (row.reply_to_id) {
     const quoted = db.prepare('SELECT id, body, sender, media_type, media_url FROM messages WHERE id = ?').get(row.reply_to_id);
@@ -538,6 +548,7 @@ function addNoteMessage({ conversationId, body = '', type = 'text', mediaType = 
     `INSERT INTO messages (conversation_id, direction, body, type, media_type, media_url, sender, agent_id, created_at)
      VALUES (?, 'note', ?, ?, ?, ?, 'note', ?, ?)`
   ).run(conversationId, body, type, mediaType, mediaUrl, agentId, t);
+  touchSnapshot();
   return db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
 }
 
@@ -594,6 +605,7 @@ function getMessage(id) {
 function markMessageEdited(id, supersededBy = null) {
   db.prepare('UPDATE messages SET edited_at = ?, superseded_by = ? WHERE id = ?')
     .run(now(), supersededBy, id);
+  touchSnapshot();
   return db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
 }
 

@@ -284,6 +284,35 @@ Teen roles hain — **owner** > **admin** > **agent**:
   BACKUP_KEEP=10
   ```
 
+## Deploy ke baad data bachana (R2 snapshot)
+
+Render (free) ka filesystem ephemeral hai — har deploy par SQLite DB reset ho
+jati hai. Is se chats aur **agent attribution** (kaun se agent ne reply kiya)
+gum ho jati thi. Ab DB khud-ba-khud Cloudflare R2 par snapshot hoti hai aur
+server start par wapas restore ho jati hai:
+
+- Jab bhi DB badalti hai (message, reply, edit, connection change), ~10s ke
+  andar `r2://<bucket>/db/omnichannel.db` par consistent snapshot chala jata hai
+- Server start par agar local DB maujood nahi hai to wahi snapshot restore hota
+  hai — **is liye agent IDs aur chats deploy ke baad bhi rehte hain**
+- R2 wahi bucket use hota hai jo uploads ke liye configured hai
+  (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`)
+- Manual check/force: `GET /api/db-status` (admin/owner) aur
+  `GET /api/db-status?snapshot=1`
+- Env knobs:
+  ```
+  DB_SNAPSHOT_MS=10000          # check interval
+  DB_SNAPSHOT_KEY=db/omnichannel.db
+  DB_SNAPSHOT=false             # snapshots band
+  DB_RESTORE_FROM_R2=false      # boot par restore band
+  DB_RESTORE_ALWAYS=true        # local DB ho tab bhi R2 se overwrite
+  ```
+
+> Pehli dafa deploy par R2 me snapshot nahi hota, is liye purani chats Meta se
+> sync hoti hain — un purane messages ki agent attribution Meta ke paas nahi
+> hoti, is liye woh `Agent #—` dikha sakte hain. Us ke baad ke sab replies
+> permanently save hote hain.
+
 ## Security notes
 
 - `.env` kabhi kisi ke saath share nahi karna (gitignored hai)

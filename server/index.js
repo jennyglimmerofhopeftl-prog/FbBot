@@ -2,100 +2,118 @@ const path = require('node:path');
 const fs = require('node:fs');
 const express = require('express');
 const config = require('./config');
-const db = require('./db');
-const { router: apiRouter } = require('./api');
-const webhookRouter = require('./webhook');
-const { stream } = require('./realtime');
-const backup = require('./services/backup');
-const bootstrap = require('./services/bootstrap');
-const { syncConnection } = require('./services/sync');
+const dbSnapshot = require('./services/db-snapshot');
 
-db.seedAdmin();
-db.seedOwner();
+// Render ka filesystem ephemeral hai. Is liye sab se pehle DB ko R2 snapshot
+// se restore karte hain — yeh db.js ke require hone se PEHLE hona zaroori hai,
+// warna SQLite nayi (khali) file bana kar baith jati hai.
+async function main() {
+  try {
+    const r = await dbSnapshot.restoreDbIfMissing();
+    if (r.restored) console.log(`[snapshot] DB R2 se restore ho gayi (${r.bytes} bytes)`);
+    else console.log(`[snapshot] restore skip: ${r.reason}`);
+  } catch (e) {
+    console.warn(`[snapshot] restore fail: ${e.message}`);
+  }
 
-// Har server-start par DB ki consistent backup banti hai (WAL-safe).
-// Fail hone par sirf warning — server start honey se nahi rukta.
-try {
-  const backedUp = backup.createBackup();
-  console.log(`[backup] DB backup bana: ${path.basename(backedUp)}`);
-} catch (e) {
-  console.warn(`[backup] backup nahi ban saki: ${e.message}`);
-}
+  const db = require('./db');
+  const { router: apiRouter } = require('./api');
+  const webhookRouter = require('./webhook');
+  const { stream } = require('./realtime');
+  const backup = require('./services/backup');
+  const bootstrap = require('./services/bootstrap');
+  const { syncConnection } = require('./services/sync');
 
-// `.env` fallback tokens hain lekin DB connections nahi? To unse seed karo
-// taake Channels page par dikhein (ye sirf naam resolve karta hai, koi bulk
-// API call nahi).
-//
-// Render ka filesystem ephemeral hai, is liye har deploy par SQLite DB reset
-// ho jata hai. DB khali mile to ek dafa purani chats Meta se import kar lete
-// hain (AUTO_SYNC_ON_EMPTY=false se band ho sakta hai). Sync pacing ke sath
-// chalta hai taake Meta rate-limit na kare.
-const AUTO_SYNC_ON_EMPTY = process.env.AUTO_SYNC_ON_EMPTY !== 'false';
+  db.seedAdmin();
+  db.seedOwner();
 
-async function autoSyncIfEmpty() {
-  if (!AUTO_SYNC_ON_EMPTY) return;
-  if (db.countConversations() > 0) return;
+  // Har server-start par DB ki consistent backup banti hai (WAL-safe).
+  // Fail hone par sirf warning — server start honey se nahi rukta.
+  try {
+    const backedUp = backup.createBackup();
+    console.log(`[backup] DB backup bana: ${path.basename(backedUp)}`);
+  } catch (e) {
+    console.warn(`[backup] backup nahi ban saki: ${e.message}`);
+  }
 
-  const conns = db
-    .listConnections()
-    .filter((c) => c.enabled && c.has_token && c.channel !== 'whatsapp' && c.channel !== 'telegram')
-    .map((c) => db.getConnection(c.id))
-    .filter(Boolean);
+  // DB ki har tabdeeli R2 par snapshot hoti hai (agent attribution, chats,
+  // connections — sab deploy ke baad bhi bache rehte hain).
+  dbSnapshot.startAutoSnapshot(db);
 
-  if (!conns.length) return;
+  // `.env` fallback tokens hain lekin DB connections nahi? To unse seed karo
+  // taake Channels page par dikhein (ye sirf naam resolve karta hai, koi bulk
+  // API call nahi).
+  //
+  // Render ka filesystem ephemeral hai, is liye har deploy par SQLite DB reset
+  // ho jata hai. DB khali mile to ek dafa purani chats Meta se import kar lete
+  // hain (AUTO_SYNC_ON_EMPTY=false se band ho sakta hai). Sync pacing ke sath
+  // chalta hai taake Meta rate-limit na kare.
+  const AUTO_SYNC_ON_EMPTY = process.env.AUTO_SYNC_ON_EMPTY !== 'false';
 
-  console.log('[auto-sync] DB khali hai — purani chats import ho rahi hain...');
-  for (const conn of conns) {
-    try {
-      const result = await syncConnection(conn);
-      console.log(
-        `[auto-sync] ${conn.channel} (id ${conn.id}): total=${result.total} created=${result.created} messages=${result.messages_imported} error=${result.error || 'none'}`
-      );
-      if (result.rate_limited) {
-        console.warn('[auto-sync] Meta rate-limit — baaki connections skip.');
-        break;
+  async function autoSyncIfEmpty() {
+    if (!AUTO_SYNC_ON_EMPTY) return;
+    if (db.countConversations() > 0) return;
+
+    const conns = db
+      .listConnections()
+      .filter((c) => c.enabled && c.has_token && c.channel !== 'whatsapp' && c.channel !== 'telegram')
+      .map((c) => db.getConnection(c.id))
+      .filter(Boolean);
+
+    if (!conns.length) return;
+
+    console.log('[auto-sync] DB khali hai — purani chats import ho rahi hain...');
+    for (const conn of conns) {
+      try {
+        const result = await syncConnection(conn);
+        console.log(
+          `[auto-sync] ${conn.channel} (id ${conn.id}): total=${result.total} created=${result.created} messages=${result.messages_imported} error=${result.error || 'none'}`
+        );
+        if (result.rate_limited) {
+          console.warn('[auto-sync] Meta rate-limit — baaki connections skip.');
+          break;
+        }
+      } catch (e) {
+        console.warn(`[auto-sync] ${conn.channel} (id ${conn.id}) fail: ${e.message}`);
       }
-    } catch (e) {
-      console.warn(`[auto-sync] ${conn.channel} (id ${conn.id}) fail: ${e.message}`);
+      // Connections ke beech gap — Meta ko breathing room.
+      await new Promise((r) => setTimeout(r, 1000));
     }
-    // Connections ke beech gap — Meta ko breathing room.
-    await new Promise((r) => setTimeout(r, 1000));
   }
-}
 
-(async () => {
-  try {
-    await bootstrap.seedFromEnv();
-  } catch (e) {
-    console.warn(`[bootstrap] .env seed fail hua: ${e.message}`);
-  }
-  try {
-    await autoSyncIfEmpty();
-  } catch (e) {
-    console.warn(`[auto-sync] fail: ${e.message}`);
-  }
-})();
+  (async () => {
+    try {
+      await bootstrap.seedFromEnv();
+    } catch (e) {
+      console.warn(`[bootstrap] .env seed fail hua: ${e.message}`);
+    }
+    try {
+      await autoSyncIfEmpty();
+    } catch (e) {
+      console.warn(`[auto-sync] fail: ${e.message}`);
+    }
+  })();
 
-const app = express();
-app.disable('x-powered-by');
-// Meta webhooks land here for all three channels.
-// Mounted BEFORE express.json so we can capture the raw body for HMAC verification.
-app.use('/webhook', webhookRouter);
+  const app = express();
+  app.disable('x-powered-by');
+  // Meta webhooks land here for all three channels.
+  // Mounted BEFORE express.json so we can capture the raw body for HMAC verification.
+  app.use('/webhook', webhookRouter);
 
-app.use(express.json());
+  app.use(express.json());
 
-// Public media files (Meta fetches attachment URLs server-side on our behalf).
-app.use('/uploads', express.static(config.uploadDir));
+  // Public media files (Meta fetches attachment URLs server-side on our behalf).
+  app.use('/uploads', express.static(config.uploadDir));
 
-// Agent API
-app.use('/api', apiRouter);
+  // Agent API
+  app.use('/api', apiRouter);
 
-// Realtime push to the inbox (Server-Sent Events)
-app.get('/api/stream', stream);
+  // Realtime push to the inbox (Server-Sent Events)
+  app.get('/api/stream', stream);
 
-// Live privacy policy page (used for Meta App verification)
-app.get('/privacy-policy', (_req, res) => {
-  res.send(`<!doctype html>
+  // Live privacy policy page (used for Meta App verification)
+  app.get('/privacy-policy', (_req, res) => {
+    res.send(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -137,40 +155,46 @@ app.get('/privacy-policy', (_req, res) => {
   <p>For any privacy questions, message our page directly and we will assist you.</p>
 </body>
 </html>`);
-});
-
-// Serve the built React app, if present
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
-if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/webhook')) return next();
-    res.sendFile(path.join(clientDist, 'index.html'));
   });
-}
 
-function printStatus() {
-  const conns = db.listConnections();
-  console.log('[server] UI connections:');
-  if (!conns.length) {
-    console.log('  (koi nahi - Channels page se add karein)');
-  } else {
-    for (const c of conns) {
-      const state = c.enabled ? (c.has_token ? 'active' : 'MISSING TOKEN') : 'disabled';
-      console.log(`  - [${c.channel}] ${c.name} (id ${c.id}) -> ${state}`);
-    }
+  // Serve the built React app, if present
+  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/webhook')) return next();
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
   }
-  console.log('[server] .env fallback tokens:');
-  console.log(`  - Facebook: ${config.pageAccessToken ? 'configured' : 'not set'}`);
-  console.log(`  - Instagram: ${config.igAccessToken ? 'configured' : 'not set'}`);
-  console.log(`  - WhatsApp: ${config.waAccessToken ? 'configured' : 'not set'}`);
+
+  function printStatus() {
+    const conns = db.listConnections();
+    console.log('[server] UI connections:');
+    if (!conns.length) {
+      console.log('  (koi nahi - Channels page se add karein)');
+    } else {
+      for (const c of conns) {
+        const state = c.enabled ? (c.has_token ? 'active' : 'MISSING TOKEN') : 'disabled';
+        console.log(`  - [${c.channel}] ${c.name} (id ${c.id}) -> ${state}`);
+      }
+    }
+    console.log('[server] .env fallback tokens:');
+    console.log(`  - Facebook: ${config.pageAccessToken ? 'configured' : 'not set'}`);
+    console.log(`  - Instagram: ${config.igAccessToken ? 'configured' : 'not set'}`);
+    console.log(`  - WhatsApp: ${config.waAccessToken ? 'configured' : 'not set'}`);
+  }
+
+  app.listen(config.port, () => {
+    console.log(`[server] Omnichannel inbox running on http://localhost:${config.port}`);
+    console.log(`[server] Webhook URL:   http://<your-public-host>/webhook`);
+    printStatus();
+  });
+
+  // .env ke bina bhi chal sake (deploy par), config load hone ke baad
+  process.on('SIGHUP', printStatus);
 }
 
-app.listen(config.port, () => {
-  console.log(`[server] Omnichannel inbox running on http://localhost:${config.port}`);
-  console.log(`[server] Webhook URL:   http://<your-public-host>/webhook`);
-  printStatus();
+main().catch((e) => {
+  console.error('[server] fatal:', e);
+  process.exit(1);
 });
-
-// .env ke bina bhi chal sake (deploy par), config load hone ke baad
-process.on('SIGHUP', printStatus);
