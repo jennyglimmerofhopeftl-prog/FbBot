@@ -483,7 +483,7 @@ const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.s
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
   (SELECT body FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
 
-function listConversations({ status, channel, unread, limit = 200 } = {}) {
+function listConversations({ status, channel, unread, agent, limit = 200 } = {}) {
   const conditions = [];
   const params = [];
   if (status && status !== 'all') {
@@ -497,6 +497,18 @@ function listConversations({ status, channel, unread, limit = 200 } = {}) {
   if (unread) {
     conditions.push('c.unread > 0');
   }
+  // Agent filter: 'none' = sirf unassigned chats, warna agent id.
+  if (agent && agent !== 'all') {
+    if (agent === 'none') {
+      conditions.push('c.assigned_agent_id IS NULL');
+    } else {
+      const agentId = Number(agent);
+      if (Number.isFinite(agentId)) {
+        conditions.push('c.assigned_agent_id = ?');
+        params.push(agentId);
+      }
+    }
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   params.push(Math.min(Number(limit) || 200, 500));
 
@@ -509,6 +521,24 @@ function listConversations({ status, channel, unread, limit = 200 } = {}) {
      ORDER BY c.last_message_at DESC
      LIMIT ?`
   ).all(...params);
+}
+
+// Admin/owner ka agent-wise filter: kis agent ke paas kitni chats hain.
+function assignmentCounts() {
+  const agents = db
+    .prepare(
+      `SELECT a.id, a.name, a.role, COUNT(c.id) AS count
+       FROM agents a
+       LEFT JOIN conversations c ON c.assigned_agent_id = a.id
+       GROUP BY a.id
+       ORDER BY COUNT(c.id) DESC, a.name COLLATE NOCASE`
+    )
+    .all();
+  const unassigned = db
+    .prepare('SELECT COUNT(*) AS n FROM conversations WHERE assigned_agent_id IS NULL')
+    .get().n;
+  const total = db.prepare('SELECT COUNT(*) AS n FROM conversations').get().n;
+  return { agents, unassigned, total };
 }
 
 function getConversation(id) {
@@ -698,6 +728,7 @@ module.exports = {
   listAllAppSecrets,
   findOrCreateConversation,
   listConversations,
+  assignmentCounts,
   getConversation,
   setConversationStatus,
   setConversationAgent,

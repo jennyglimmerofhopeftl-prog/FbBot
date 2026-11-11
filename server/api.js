@@ -105,9 +105,16 @@ router.get('/conversations', requireAuth, (req, res) => {
     status: req.query.status || 'all',
     channel: req.query.channel || 'all',
     unread: req.query.unread === '1' || req.query.unread === 'true',
+    agent: req.query.agent || 'all',
     limit: req.query.limit,
   });
   res.json({ conversations });
+});
+
+// Kis agent ke paas kitni chats assign hain (admin/owner ka agent filter).
+// NOTE: /conversations/:id se pehle register hai warna ye us route mein chala jata.
+router.get('/conversations/assignment-counts', requireAuth, (req, res) => {
+  res.json(db.assignmentCounts());
 });
 
 router.get('/conversations/:id', requireAuth, (req, res) => {

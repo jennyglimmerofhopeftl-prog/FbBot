@@ -82,8 +82,10 @@ export const api = {
     if (params.status && params.status !== 'all') qs.set('status', params.status);
     if (params.channel && params.channel !== 'all') qs.set('channel', params.channel);
     if (params.unread) qs.set('unread', '1');
+    if (params.agent && params.agent !== 'all') qs.set('agent', params.agent);
     return request(`/conversations?${qs.toString()}`);
   },
+  assignmentCounts: () => request('/conversations/assignment-counts'),
   conversation: (id) => request(`/conversations/${id}`),
   reply: (id, payload) => request(`/conversations/${id}/reply`, { method: 'POST', body: payload }),
   editMessage: (id, messageId, body) =>

@@ -27,6 +27,8 @@ export default function ChatWorkspace({ agentView = false }) {
   const [conversations, setConversations] = useState([]);
   const [agents, setAgents] = useState([]);
   const [search, setSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [agentCounts, setAgentCounts] = useState({ agents: [], unassigned: 0, total: 0 });
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [active, setActive] = useState(null);
@@ -49,6 +51,8 @@ export default function ChatWorkspace({ agentView = false }) {
   const activeTabDef = TABS.find((t) => t.key === activeTab) || TABS[0];
   const filterRef = useRef(activeTabDef);
   filterRef.current = activeTabDef;
+  const agentFilterRef = useRef(agentFilter);
+  agentFilterRef.current = agentFilter;
 
   // Kya conversation current tab ke filter ko match karti hai?
   // My Chats ke Unread tab mein naye assignment (assign_pending) bhi "unread"
@@ -57,6 +61,15 @@ export default function ChatWorkspace({ agentView = false }) {
     const f = filterRef.current;
     if (f.unread && !(conversation.unread > 0) && !(agentView && conversation.assign_pending)) return false;
     if (f.status !== 'all' && conversation.status !== f.status) return false;
+    // Agent filter (sirf Inbox/admin): 'none' = unassigned, warna agent id.
+    const ag = agentFilterRef.current;
+    if (!agentView && ag !== 'all') {
+      if (ag === 'none') {
+        if (conversation.assigned_agent_id != null) return false;
+      } else if (String(conversation.assigned_agent_id) !== ag) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -131,6 +144,7 @@ export default function ChatWorkspace({ agentView = false }) {
         const { conversations: list } = await api.conversations({
           status: f.status,
           unread: f.unread && !agentView,
+          agent: agentFilterRef.current,
         });
         setConversations((prev) => {
           let next = list;
@@ -139,6 +153,9 @@ export default function ChatWorkspace({ agentView = false }) {
             .filter((c) => matchesTab(c))
             .sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0));
         });
+        if (!agentView) {
+          api.assignmentCounts().then(setAgentCounts).catch(() => {});
+        }
         if (activeIdRef.current) {
           try {
             const { conversation, messages: msgs } = await api.conversation(activeIdRef.current);
@@ -168,12 +185,15 @@ export default function ChatWorkspace({ agentView = false }) {
         const { conversations: list } = await api.conversations({
           status: f.status,
           unread: f.unread && !agentView,
+          agent: agentFilterRef.current,
         });
         let filtered = agentView ? list.filter((c) => c.assigned_agent_id === user?.id) : list;
-        if (agentView && f.unread) filtered = filtered.filter((c) => c.unread > 0 || c.assign_pending);
+        if (!agentView) {
+          api.assignmentCounts().then((c) => { if (!cancelled) setAgentCounts(c); }).catch(() => {});
+        }
         const sorted = [...filtered].sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0));
         if (cancelled) return;
-        setConversations(sorted);
+        setConversations(sorted.filter((c) => matchesTab(c)));
         // My Chats: koi chat khud nahi khulti — jab tak agent khud click na kare,
         // nayi assigned chat red highlight mein visible rahe. Inbox (admin/owner)
         // mein pehli chat pehle ki tarah khud khul jati hai.
@@ -203,7 +223,7 @@ export default function ChatWorkspace({ agentView = false }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, agentView]);
+  }, [activeTab, agentView, agentFilter]);
 
   useEffect(() => {
     const t = setInterval(() => refresh({ silent: true }), AUTO_REFRESH_MS);
@@ -340,6 +360,8 @@ export default function ChatWorkspace({ agentView = false }) {
         media || {}
       );
       setConversations((prev) => upsert(prev, conversation));
+      // Agent-wise counts turant update karo (filter dropdown ke numbers).
+      api.assignmentCounts().then(setAgentCounts).catch(() => {});
       setActive((t) => (t && t.id === activeId ? conversation : t));
       if (noteRecord) setMessages((prev) => mergeMessages(prev, [noteRecord]));
     } catch (e) {
@@ -448,6 +470,33 @@ export default function ChatWorkspace({ agentView = false }) {
             </button>
           ))}
         </div>
+        {/* Agent-wise filter (sirf admin/owner): kis agent ke paas kitni chats.
+            Counts saath saath update hote hain (assign par bhi). */}
+        {!agentView && isStaff && (
+          <div className="border-b border-slate-200 px-2 py-1.5">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                👤
+              </span>
+              <select
+                value={agentFilter}
+                onChange={(e) => setAgentFilter(e.target.value)}
+                title="Kis agent ke paas kitni chats hain — us agent ki chats dekhne ke liye select karein"
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-1.5 pl-7 pr-2 text-xs font-medium text-slate-700 outline-none transition hover:border-slate-400 focus:border-lemon"
+              >
+                <option value="all">
+                  Sab agents — total {agentCounts.total || 0}
+                </option>
+                <option value="none">Unassigned — {agentCounts.unassigned || 0}</option>
+                {agentCounts.agents.map((a) => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.name} — {a.count}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {loading && <p className="p-4 text-sm text-slate-500">Loading...</p>}
           {visible.map((c) => {
