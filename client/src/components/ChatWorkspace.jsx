@@ -469,34 +469,44 @@ export default function ChatWorkspace({ agentView = false }) {
               {t.label}
             </button>
           ))}
-        </div>
-        {/* Agent-wise filter (sirf admin/owner): kis agent ke paas kitni chats.
-            Counts saath saath update hote hain (assign par bhi). */}
-        {!agentView && isStaff && (
-          <div className="border-b border-slate-200 px-2 py-1.5">
-            <div className="relative">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                👤
-              </span>
-              <select
-                value={agentFilter}
-                onChange={(e) => setAgentFilter(e.target.value)}
-                title="Kis agent ke paas kitni chats hain — us agent ki chats dekhne ke liye select karein"
-                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-1.5 pl-7 pr-2 text-xs font-medium text-slate-700 outline-none transition hover:border-slate-400 focus:border-lemon"
+          {/* Agent tabs (sirf admin/owner): click = us agent ki chats,
+              active chip par dobara click = filter hat jata hai.
+              Har naam ke saath uske assigned chats ka count hai. */}
+          {!agentView && isStaff && agentCounts.agents.length > 0 && (
+            <span className="mx-1 h-4 w-px shrink-0 bg-slate-300" />
+          )}
+          {!agentView && isStaff && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAgentFilter(agentFilter === 'none' ? 'all' : 'none')}
+                title="Kisi agent ko assign nahi hui chats"
+                className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                  agentFilter === 'none'
+                    ? 'bg-brand text-white shadow-sm'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                }`}
               >
-                <option value="all">
-                  Sab agents — total {agentCounts.total || 0}
-                </option>
-                <option value="none">Unassigned — {agentCounts.unassigned || 0}</option>
-                {agentCounts.agents.map((a) => (
-                  <option key={a.id} value={String(a.id)}>
-                    {a.name} — {a.count}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
+                Unassigned{agentCounts.unassigned > 0 ? ` (${agentCounts.unassigned})` : ''}
+              </button>
+              {agentCounts.agents.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setAgentFilter(agentFilter === String(a.id) ? 'all' : String(a.id))}
+                  title={`${a.name} ki assigned chats (${a.count}) — click par sirf yahi agent ki chats`}
+                  className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                    agentFilter === String(a.id)
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                  }`}
+                >
+                  👤 {a.name} ({a.count})
+                </button>
+              ))}
+            </>
+          )}
+        </div>
         <div className="flex-1 overflow-y-auto">
           {loading && <p className="p-4 text-sm text-slate-500">Loading...</p>}
           {visible.map((c) => {
