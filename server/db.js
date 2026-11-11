@@ -118,6 +118,11 @@ if (!msgCols.includes('superseded_by')) {
 if (!convCols.includes('connection_id')) {
   db.exec(`ALTER TABLE conversations ADD COLUMN connection_id INTEGER REFERENCES connections(id)`);
 }
+// Assignment highlight: admin kisi agent ko chat assign kare to flag 1 ho jata
+// hai; jab assigned agent khud wo chat khole to 0 (tab tak list mein red rehti hai).
+if (!convCols.includes('assign_pending')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN assign_pending INTEGER NOT NULL DEFAULT 0`);
+}
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
 // Purani Instagram connections jinme Facebook Login token (EAA...) hai lekin
@@ -473,7 +478,7 @@ function findOrCreateConversation({ channel, externalId, contactName, photo, con
 }
 
 const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.status, c.note, c.photo,
-  c.unread, c.last_message_at, c.created_at, c.connection_id,
+  c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending,
   cn.name AS connection_name,
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
   (SELECT body FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
@@ -522,7 +527,8 @@ function setConversationStatus(id, status) {
 }
 
 function setConversationAgent(id, agentId) {
-  db.prepare('UPDATE conversations SET assigned_agent_id = ? WHERE id = ?').run(agentId, id);
+  db.prepare('UPDATE conversations SET assigned_agent_id = ?, assign_pending = ? WHERE id = ?')
+    .run(agentId, agentId ? 1 : 0, id);
   return getConversation(id);
 }
 
@@ -531,8 +537,16 @@ function setConversationNote(id, note) {
   return getConversation(id);
 }
 
-function markConversationRead(id) {
-  db.prepare('UPDATE conversations SET unread = 0 WHERE id = ?').run(id);
+// unread hamesha clear hota hai; assignment highlight sirf tab jab khulne wala
+// khud assigned agent ho (admin chat khole to agent ke liye red pending rahe).
+function markConversationRead(id, readerId) {
+  db.prepare(
+    `UPDATE conversations
+     SET unread = 0,
+         assign_pending = CASE WHEN assigned_agent_id = ? THEN 0 ELSE assign_pending END
+     WHERE id = ?`
+  ).run(readerId ?? null, id);
+  return getConversation(id);
 }
 
 function reopenIfResolved(id) {

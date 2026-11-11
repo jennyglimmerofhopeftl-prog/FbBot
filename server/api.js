@@ -307,7 +307,9 @@ router.post('/conversations/:id/status', requireAuth, (req, res) => {
 router.post('/conversations/:id/read', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  db.markConversationRead(conversation.id);
+  const updated = db.markConversationRead(conversation.id, req.agent.id);
+  // Broadcast se doosri devices par bhi unread/red foran clear ho jata hai.
+  broadcast('conversation', { conversation: updated });
   res.json({ ok: true });
 });
 

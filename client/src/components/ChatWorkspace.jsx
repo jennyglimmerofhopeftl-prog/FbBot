@@ -51,9 +51,11 @@ export default function ChatWorkspace({ agentView = false }) {
   filterRef.current = activeTabDef;
 
   // Kya conversation current tab ke filter ko match karti hai?
+  // My Chats ke Unread tab mein naye assignment (assign_pending) bhi "unread"
+  // count hoti hain — agent ko red chats wahan bhi dikhein.
   function matchesTab(conversation) {
     const f = filterRef.current;
-    if (f.unread && !(conversation.unread > 0)) return false;
+    if (f.unread && !(conversation.unread > 0) && !(agentView && conversation.assign_pending)) return false;
     if (f.status !== 'all' && conversation.status !== f.status) return false;
     return true;
   }
@@ -106,7 +108,9 @@ export default function ChatWorkspace({ agentView = false }) {
         setMessages(list);
         setActive(conversation);
         setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)).filter(matchesTab)
+          prev
+            .map((c) => (c.id === id ? { ...c, unread: 0, assign_pending: 0 } : c))
+            .filter(matchesTab)
         );
         api.markRead(id).catch(() => {});
       } catch (e) {
@@ -122,9 +126,11 @@ export default function ChatWorkspace({ agentView = false }) {
       if (!silent) setRefreshing(true);
       try {
         const f = filterRef.current;
+        // My Chats ka Unread tab client-side filter hota hai (unread ya
+        // assign_pending), is liye server ka unread filter sirf Inbox ke liye.
         const { conversations: list } = await api.conversations({
           status: f.status,
-          unread: f.unread,
+          unread: f.unread && !agentView,
         });
         setConversations((prev) => {
           let next = list;
@@ -161,13 +167,17 @@ export default function ChatWorkspace({ agentView = false }) {
         const f = filterRef.current;
         const { conversations: list } = await api.conversations({
           status: f.status,
-          unread: f.unread,
+          unread: f.unread && !agentView,
         });
-        const filtered = agentView ? list.filter((c) => c.assigned_agent_id === user?.id) : list;
+        let filtered = agentView ? list.filter((c) => c.assigned_agent_id === user?.id) : list;
+        if (agentView && f.unread) filtered = filtered.filter((c) => c.unread > 0 || c.assign_pending);
         const sorted = [...filtered].sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0));
         if (cancelled) return;
         setConversations(sorted);
-        if (sorted.length && !f.unread) {
+        // My Chats: koi chat khud nahi khulti — jab tak agent khud click na kare,
+        // nayi assigned chat red highlight mein visible rahe. Inbox (admin/owner)
+        // mein pehli chat pehle ki tarah khud khul jati hai.
+        if (!agentView && sorted.length && !f.unread) {
           const snap = await api.conversation(sorted[0].id);
           if (cancelled) return;
           setActiveId(sorted[0].id);
@@ -228,6 +238,9 @@ export default function ChatWorkspace({ agentView = false }) {
           setActiveId(null);
           setActive(null);
           setMessages([]);
+        } else if (agentView && payload.conversation.assign_pending) {
+          // Chat pehle se khuli hai — assignment dekhi ja chuki hai, red clear.
+          api.markRead(payload.conversation.id).catch(() => {});
         }
       }
     };
@@ -443,8 +456,12 @@ export default function ChatWorkspace({ agentView = false }) {
               <button
                 key={c.id}
                 onClick={() => select(c.id)}
-                className={`block w-full border-b px-4 py-3 text-left transition hover:bg-slate-50 ${
-                  activeId === c.id ? 'bg-brand-soft' : 'border-slate-100 bg-white'
+                className={`block w-full border-b px-4 py-3 text-left transition ${
+                  activeId === c.id
+                    ? 'bg-brand-soft'
+                    : agentView && c.assign_pending
+                      ? 'border-red-100 bg-red-50 hover:bg-red-100'
+                      : 'border-slate-100 bg-white hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -455,6 +472,14 @@ export default function ChatWorkspace({ agentView = false }) {
                         {c.contact_name}
                       </span>
                       <div className="ml-2 flex items-center gap-1.5">
+                        {agentView && c.assign_pending > 0 && (
+                          <span
+                            className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                            title="Nayi assigned chat — abhi open nahi ki"
+                          >
+                            new
+                          </span>
+                        )}
                         {(c.unread || 0) > 0 && (
                           <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
                             {c.unread > 99 ? '99+' : c.unread}
@@ -488,11 +513,30 @@ export default function ChatWorkspace({ agentView = false }) {
                     {!agentView && (
                       <div className="mt-0.5 flex items-center gap-1">
                         <span
-                          className="inline-block h-2 w-2 rounded-full"
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
                           style={{ background: ch.color }}
                           title={ch.label}
                         />
-                        <span className="text-[10px] text-slate-400">{ch.label}</span>
+                        <span className="shrink-0 text-[10px] text-slate-400">{ch.label}</span>
+                      </div>
+                    )}
+                    {!agentView && isStaff && (
+                      <div className="mt-1">
+                        {c.assigned_agent_name ? (
+                          <span
+                            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand"
+                            title={`Chat is agent ke paas hai: ${c.assigned_agent_name}`}
+                          >
+                            👤 <span className="truncate">{c.assigned_agent_name}</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600"
+                            title="Kisi agent ko assign nahi — chat khol kar Assign karein"
+                          >
+                            unassigned
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

@@ -111,7 +111,7 @@ function QuoteBar({ quote, mine = false }) {
   const label = (quote.body || mediaText || '');
   return (
     <div
-      className={`mb-1 flex items-center gap-1.5 overflow-hidden rounded-lg border-l-2 px-2 py-1 text-xs ${
+      className={`mb-1 flex items-start gap-1.5 overflow-hidden rounded-lg border-l-2 px-2 py-1 text-xs ${
         mine
           ? 'border-white/60 bg-white/15 text-white/85'
           : 'border-brand/30 bg-brand-soft text-slate-500'
@@ -128,7 +128,7 @@ function QuoteBar({ quote, mine = false }) {
       {quote.media_url && quote.media_type === 'video' && (
         <span className="shrink-0">🎬</span>
       )}
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{label}</span>
     </div>
   );
 }
@@ -177,7 +177,7 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, show
       ) : (
         <ReplyButton onClick={onReply} />
       )}
-      <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+      <div className={`flex max-w-[80%] flex-col ${mine ? 'items-end' : 'items-start'}`}>
         <div
           className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${
             mine
@@ -618,7 +618,7 @@ export default function ChatWindow({
                       ? 'agent'
                       : 'customer'}
                 </p>
-                <p className="truncate text-xs text-slate-600">
+                <p className="whitespace-pre-wrap break-words text-xs text-slate-600">
                   {replyingTo.media_url
                     ? (replyingTo.media_type === 'image'
                         ? '[image]'
