@@ -269,6 +269,7 @@ export default function ChatWindow({
   onDeleteNote,
   onChangeStatus,
   onDismiss,
+  onOpenInbox,
   onToggleNotes,
   mobileNotes,
   onSendMedia,
@@ -526,25 +527,25 @@ export default function ChatWindow({
     <div className="flex flex-1">
       {/* main column */}
       <div className="flex flex-1 flex-col bg-sky-50">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Avatar name={active.contact_name} photo={active.photo} className="h-10 w-10 text-base" />
-            <div>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <Avatar name={active.contact_name} photo={active.photo} className="h-10 w-10 shrink-0 text-base" />
+            <div className="min-w-0">
               <button
                 type="button"
                 onClick={() => setShowInfo(true)}
                 title="Customer details dekho"
-                className="text-left font-semibold text-slate-800 transition hover:text-brand hover:underline"
+                className="block max-w-full truncate text-left font-semibold text-slate-800 transition hover:text-brand hover:underline"
               >
                 {active.contact_name}
               </button>
-              <p className="text-xs text-slate-500">
+              <p className="truncate text-xs text-slate-500">
                 <span style={{ color: channel.color }}>{channel.label}</span>
                 {active.assigned_agent_name ? ` · Agent: ${active.assigned_agent_name}` : ''}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <span className={`hidden rounded px-2 py-0.5 text-[10px] font-semibold capitalize sm:inline-block ${
               active.status === 'resolved'
                 ? 'bg-green-100 text-green-700'
@@ -557,14 +558,22 @@ export default function ChatWindow({
             <button
               onClick={() => setShowInfo(true)}
               title="Customer details"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+              className="hidden rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 sm:block"
             >
               ℹ️
             </button>
+            {/* Mobile popup icons: Inbox list aur Agent Notes/Forward panel */}
+            <button
+              onClick={onOpenInbox}
+              title="Inbox list kholo"
+              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 md:hidden"
+            >
+              ☰
+            </button>
             <button
               onClick={onToggleNotes}
-              title="Notes kholo/band karo"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 md:hidden"
+              title="Agent Notes / Forward panel kholo"
+              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 md:hidden"
             >
               📝
             </button>
@@ -761,23 +770,27 @@ export default function ChatWindow({
         <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={onToggleNotes} />
       )}
 
-      {/* notes panel */}
+      {/* notes panel: mobile par right side popup drawer, desktop par side bar */}
       <aside
         className={`flex-col border-l border-slate-200 bg-white ${
           mobileNotes
-            ? 'fixed inset-y-0 right-0 z-50 flex w-80 shadow-xl'
+            ? 'fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-sm shadow-xl'
             : 'hidden'
         } md:static md:z-auto md:flex md:shadow-none`}
         style={{ width: mobileNotes ? undefined : notesWidth }}
       >
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">📝 Agent Notes</h3>
-            <button onClick={onToggleNotes} className="rounded-lg border border-slate-200 p-1 text-xs text-slate-500 hover:bg-slate-100 md:hidden">
+            <h3 className="text-sm font-semibold text-slate-800">📝 Notes / Forward</h3>
+            <button
+              onClick={onToggleNotes}
+              title="Panel band karo"
+              className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 md:hidden"
+            >
               ✕
             </button>
           </div>
-          <p className="text-[11px] text-slate-400">Sirf team ko dikhte hain (customer ko nahi)</p>
+          <p className="text-[11px] text-slate-400">Notes sirf team ko dikhte hain (customer ko nahi)</p>
         </div>
 
         <div className="flex-1 space-y-2 overflow-y-auto p-3">

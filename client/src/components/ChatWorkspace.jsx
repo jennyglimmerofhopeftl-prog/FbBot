@@ -58,6 +58,11 @@ export default function ChatWorkspace({ agentView = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mobileNotes, setMobileNotes] = useState(false);
+  // Mobile par Inbox list ek popup drawer ki tarah khulti hai (chat ke upar).
+  const [mobileInbox, setMobileInbox] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window === 'undefined' ? false : window.matchMedia('(max-width: 767px)').matches
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [listWidth, setListWidth] = useState(() => {
     try {
@@ -70,6 +75,14 @@ export default function ChatWorkspace({ agentView = false }) {
   const listWidthRef = useRef(listWidth);
   const activeIdRef = useRef(null);
   activeIdRef.current = activeId;
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const activeTabDef = TABS.find((t) => t.key === activeTab) || TABS[0];
   const filterRef = useRef(activeTabDef);
@@ -143,6 +156,9 @@ export default function ChatWorkspace({ agentView = false }) {
         setActiveId(id);
         setMessages(list);
         setActive(conversation);
+        // Mobile: chat khulte hi list drawer band, notes drawer bhi band.
+        setMobileInbox(false);
+        setMobileNotes(false);
         setConversations((prev) =>
           prev
             .map((c) => (c.id === id ? { ...c, unread: 0, assign_pending: 0 } : c))
@@ -229,8 +245,9 @@ export default function ChatWorkspace({ agentView = false }) {
         setConversations(sorted.filter((c) => matchesTab(c)));
         // My Chats: koi chat khud nahi khulti — jab tak agent khud click na kare,
         // nayi assigned chat red highlight mein visible rahe. Inbox (admin/owner)
-        // mein pehli chat pehle ki tarah khud khul jati hai.
-        if (!agentView && sorted.length && !f.unread) {
+        // mein desktop par pehli chat khud khul jati hai; mobile par list hi
+        // dikhti hai (chat tap karne par khulegi).
+        if (!agentView && sorted.length && !f.unread && !isMobile) {
           const snap = await api.conversation(sorted[0].id);
           if (cancelled) return;
           setActiveId(sorted[0].id);
@@ -425,6 +442,7 @@ export default function ChatWorkspace({ agentView = false }) {
 
   function dismissChat() {
     setMobileNotes(false);
+    setMobileInbox(false);
     setActiveId(null);
     setActive(null);
     setMessages([]);
@@ -444,12 +462,26 @@ export default function ChatWorkspace({ agentView = false }) {
     });
   }, [sorted, q]);
 
+  // Mobile: jab chat khula hai to list popup drawer banti hai (Inbox icon se
+  // khulti hai), warna poori screen. Desktop par hamesha side-by-side.
+  const listMobileClasses = !activeId
+    ? 'flex w-full'
+    : mobileInbox
+      ? 'fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-sm shadow-2xl'
+      : 'hidden';
+
   return (
     <div className="relative flex h-full overflow-hidden">
+      {mobileInbox && activeId && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileInbox(false)}
+        />
+      )}
       {/* conversation list */}
       <div
-        className={`${activeId ? 'hidden' : 'flex'} md:flex flex-col border-r border-slate-200 bg-white`}
-        style={{ width: listWidth }}
+        className={`${listMobileClasses} flex-col border-r border-slate-200 bg-white md:static md:z-auto md:flex md:max-w-none md:shadow-none`}
+        style={{ width: isMobile ? undefined : listWidth }}
       >
         <div className="flex items-center justify-between gap-2 bg-gradient-to-br from-brand to-lemon px-4 py-3">
           <div>
@@ -466,6 +498,15 @@ export default function ChatWorkspace({ agentView = false }) {
           >
             {refreshing ? '🔄...' : '↻ Refresh'}
           </button>
+          {activeId && (
+            <button
+              onClick={() => setMobileInbox(false)}
+              title="Inbox band karo"
+              className="rounded-lg bg-white/20 px-2.5 py-1.5 text-sm font-semibold text-white transition hover:bg-white/30 md:hidden"
+            >
+              ✕
+            </button>
+          )}
         </div>
         {error && <p className="bg-brand-soft p-2 text-xs text-brand">{error}</p>}
         <div className="border-b border-slate-200 p-2">
@@ -671,7 +712,14 @@ export default function ChatWorkspace({ agentView = false }) {
           onDeleteNote={deleteNote}
           onChangeStatus={changeStatus}
           onDismiss={dismissChat}
-          onToggleNotes={() => setMobileNotes((o) => !o)}
+          onOpenInbox={() => {
+            setMobileNotes(false);
+            setMobileInbox(true);
+          }}
+          onToggleNotes={() => {
+            setMobileInbox(false);
+            setMobileNotes((o) => !o);
+          }}
           mobileNotes={mobileNotes}
           onError={setError}
           myId={user?.id}
