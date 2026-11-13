@@ -29,10 +29,39 @@ function MediaVideo({ src, className }) {
   );
 }
 
+// Meta kabhi emoji/sticker messages ke sath profile picture ka CDN URL bhej
+// deta hai - usay media ki tarah dikhana hi nahi chahiye.
+function isProfilePicUrl(url) {
+  const value = String(url || '');
+  // `_nc_cat` asli images me bhi hota hai, is liye sirf profile-pic crop /
+  // lookaside host dekhte hain.
+  return (
+    /stp=cp0_dst-jpg/i.test(value) ||
+    /platform-lookaside\.fbsbx\.com/i.test(value) ||
+    /lookaside\.fbsbx\.com/i.test(value)
+  );
+}
+
+// URL se sirf saaf filename nikalo - query string (stp=..., _nc_...) kabhi
+// message me nahi dikhni chahiye.
+function fileNameOf(url) {
+  try {
+    const path = String(url || '').split('?')[0].split('#')[0];
+    return decodeURIComponent(path.split('/').pop() || '');
+  } catch {
+    return '';
+  }
+}
+
 function Media({ m, className = '', mine = false }) {
-  if (!m.media_url) return null;
-  if (m.media_type === 'video') return <MediaVideo src={m.media_url} className={className} />;
-  if (m.media_type === 'image') return <MediaImage src={m.media_url} className={className} />;
+  if (!m.media_url || isProfilePicUrl(m.media_url)) return null;
+  const kind = String(m.media_type || '').toLowerCase();
+  // Stickers bhi images hi hote hain.
+  if (kind === 'image' || kind === 'sticker' || kind === 'photo') {
+    return <MediaImage src={m.media_url} className={className} />;
+  }
+  if (kind === 'video') return <MediaVideo src={m.media_url} className={className} />;
+  const name = fileNameOf(m.media_url);
   return (
     <a
       href={m.media_url}
@@ -40,7 +69,7 @@ function Media({ m, className = '', mine = false }) {
       rel="noreferrer"
       className={`mb-1 flex items-center gap-1 text-xs underline ${mine ? 'text-white/85' : 'text-slate-500'}`}
     >
-      📄 {decodeURIComponent(m.media_url.split('/').pop() || 'file')}
+      📄 {name ? name.slice(0, 40) : 'Attachment'}
     </a>
   );
 }
@@ -101,13 +130,18 @@ function QuoteBar({ quote, mine = false }) {
         : quote.sender === 'customer'
           ? 'Customer'
           : 'Myself';
-  const mediaText = quote.media_url
-    ? quote.media_type === 'image'
-      ? '[image]'
-      : quote.media_type === 'video'
-        ? '[video]'
-        : '[file]'
-    : '';
+  const quoteKind =
+    quote.media_url && !isProfilePicUrl(quote.media_url)
+      ? String(quote.media_type || '').toLowerCase()
+      : '';
+  const quoteIsImage = quoteKind === 'image' || quoteKind === 'sticker' || quoteKind === 'photo';
+  const mediaText = quoteIsImage
+    ? '[image]'
+    : quoteKind === 'video'
+      ? '[video]'
+      : quoteKind
+        ? '[file]'
+        : '';
   const label = (quote.body || mediaText || '');
   return (
     <div
@@ -118,14 +152,14 @@ function QuoteBar({ quote, mine = false }) {
       }`}
     >
       <span className="shrink-0 font-semibold">↩ {sender}</span>
-      {quote.media_url && quote.media_type === 'image' && (
+      {quoteIsImage && (
         <img
           src={quote.media_url}
           alt="quoted"
           className="h-8 w-8 shrink-0 rounded object-cover"
         />
       )}
-      {quote.media_url && quote.media_type === 'video' && (
+      {quoteKind === 'video' && (
         <span className="shrink-0">🎬</span>
       )}
       <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{label}</span>
@@ -619,12 +653,12 @@ export default function ChatWindow({
                       : 'customer'}
                 </p>
                 <p className="whitespace-pre-wrap break-words text-xs text-slate-600">
-                  {replyingTo.media_url
-                    ? (replyingTo.media_type === 'image'
-                        ? '[image]'
-                        : replyingTo.media_type === 'video'
-                          ? '[video]'
-                          : '[file]')
+                  {replyingTo.media_url && !isProfilePicUrl(replyingTo.media_url)
+                    ? (() => {
+                        const k = String(replyingTo.media_type || '').toLowerCase();
+                        if (k === 'image' || k === 'sticker' || k === 'photo') return '[image]';
+                        return k === 'video' ? '[video]' : '[file]';
+                      })()
                     : replyingTo.body || ''}
                 </p>
               </div>

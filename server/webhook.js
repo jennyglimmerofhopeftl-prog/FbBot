@@ -66,6 +66,37 @@ function messageBodyFromMessagingEvent(msg) {
   return null;
 }
 
+// Messenger emoji/sticker messages ke saath kabhi kabhi profile picture ka CDN
+// URL attachments me bhej deta hai. Usay media samajh kar store karne se chat
+// me lamba "📄 https://scontent...stp=cp0_dst-jpg...&_nc_cat=1" link aa jata
+// tha. Aise URL user ki bheji hui file nahi hote.
+function looksLikeProfilePicUrl(url) {
+  const value = String(url || '');
+  if (!value) return false;
+  // Note: `_nc_cat` ko akela filter nahi karte - wo asli images me bhi hota
+  // hai. Profile pic ki pehchan `stp=cp0_dst-jpg` (crop) / lookaside host hai.
+  return (
+    /stp=cp0_dst-jpg/i.test(value) ||
+    /platform-lookaside\.fbsbx\.com/i.test(value) ||
+    /lookaside\.fbsbx\.com/i.test(value)
+  );
+}
+
+const MEDIA_ATTACHMENT_TYPES = new Set(['image', 'video', 'audio', 'file', 'sticker']);
+
+// Sirf wo attachments jinme waqai koi media file ho. share/template/fallback
+// jaise types ke sath sirf link ya metadata aata hai, file nahi.
+function realMessagingAttachments(msg) {
+  const list = Array.isArray(msg.attachments) ? msg.attachments : [];
+  return list.filter((attach) => {
+    const type = String((attach && attach.type) || '').toLowerCase();
+    const url = (attach && attach.payload && attach.payload.url) || '';
+    if (!MEDIA_ATTACHMENT_TYPES.has(type)) return false;
+    if (looksLikeProfilePicUrl(url)) return false;
+    return Boolean(url);
+  });
+}
+
 // messenger-style payload (object: 'page' | 'instagram')
 async function ingestMessaging(object, event, accountId) {
   const msg = event.message || event.postback || {};
@@ -101,7 +132,8 @@ async function ingestMessaging(object, event, accountId) {
   db.incrementUnread(conversation.id, false);
   db.reopenIfResolved(conversation.id);
 
-  const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+  const rawAttachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+  const attachments = realMessagingAttachments(msg);
   const hasMedia = attachments.length > 0;
 
   // Media workflows
@@ -112,13 +144,17 @@ async function ingestMessaging(object, event, accountId) {
       if (quoted) replyToId = quoted.id;
     }
     attachments.forEach((attach, i) => {
+      const attachType = String(attach.type || '').toLowerCase();
+      // Stickers images hote hain - inhe image ki tarah render karo, warna
+      // client "📄 <url>" ki tarah dikhata hai.
+      const mediaType = attachType === 'sticker' ? 'image' : attachType || 'document';
       const record = db.addMessage({
         conversationId: conversation.id,
         direction: 'inbound',
         body: i === 0 && msg.text ? msg.text : '',
-        type: attach.type && attach.type !== 'file' ? attach.type : 'document',
+        type: attachType && attachType !== 'file' ? attachType : 'document',
         metaId: msg.mid || null,
-        mediaType: attach.type || 'document',
+        mediaType,
         mediaUrl: (attach.payload && attach.payload.url) || null,
         sender: 'customer',
         replyToId,
@@ -130,7 +166,13 @@ async function ingestMessaging(object, event, accountId) {
     return;
   }
 
-  const body = messageBodyFromMessagingEvent(msg);
+  // Jo attachments media nahi the (profile pic / share / fallback) unhe body
+  // se hata do - warna `[Attachment: image]` jaisa bekaar label aa jata hai.
+  let body = messageBodyFromMessagingEvent({ ...msg, attachments });
+  if (body === null && rawAttachments.length) {
+    const t = String(rawAttachments[0].type || '').toLowerCase();
+    body = t === 'share' ? '[shared post]' : t === 'story_mention' ? '[story mention]' : '[attachment]';
+  }
   if (body === null) return;
 
   // Customer replies carry a reply_to.mid — link it to the original message so

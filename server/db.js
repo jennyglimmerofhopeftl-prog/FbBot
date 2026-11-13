@@ -125,6 +125,27 @@ if (!convCols.includes('assign_pending')) {
 }
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
+// Emoji/sticker messages ke sath Meta kabhi profile picture ka CDN URL
+// attachments me bhej deta hai. Wo ghalti se media_url me save ho jata tha aur
+// chat me lamba "📄 https://scontent...stp=cp0_dst-jpg..." dikhta tha. Aise
+// purane rows saaf karo (media url hi nahi tha, is liye message text rehta hai).
+try {
+  const cleaned = db
+    .prepare(
+      `UPDATE messages
+          SET media_url = NULL, media_type = NULL
+        WHERE media_url LIKE '%stp=cp0_dst-jpg%'
+           OR media_url LIKE '%platform-lookaside.fbsbx.com%'
+           OR media_type IN ('fallback', 'share', 'template', 'story_mention')`
+    )
+    .run();
+  if (cleaned.changes) {
+    console.log(`[db] ${cleaned.changes} purane emoji/profile-pic media rows saaf kiye`);
+  }
+} catch (e) {
+  console.warn('[db] media cleanup skip:', e.message);
+}
+
 // Purani Instagram connections jinme Facebook Login token (EAA...) hai lekin
 // api_host 'instagram' set hai - unhe graph.facebook.com par shift karo.
 try {
