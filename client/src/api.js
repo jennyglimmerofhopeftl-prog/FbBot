@@ -86,6 +86,7 @@ export const api = {
     return request(`/conversations?${qs.toString()}`);
   },
   assignmentCounts: () => request('/conversations/assignment-counts'),
+  unreadTotal: () => request('/conversations/unread-total'),
   conversation: (id) => request(`/conversations/${id}`),
   reply: (id, payload) => request(`/conversations/${id}/reply`, { method: 'POST', body: payload }),
   editMessage: (id, messageId, body) =>

@@ -117,6 +117,11 @@ router.get('/conversations/assignment-counts', requireAuth, (req, res) => {
   res.json(db.assignmentCounts());
 });
 
+// Header badge: sirf total unread (poori list ke baghair).
+router.get('/conversations/unread-total', requireAuth, (req, res) => {
+  res.json({ unread: db.unreadTotal() });
+});
+
 router.get('/conversations/:id', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });

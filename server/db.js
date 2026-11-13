@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS idx_conv_channel ON conversations(channel);
 CREATE INDEX IF NOT EXISTS idx_conv_status ON conversations(status);
 CREATE INDEX IF NOT EXISTS idx_conv_last_msg ON conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conv_agent ON conversations(assigned_agent_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_msg_latest ON messages(conversation_id, id DESC);
 
 CREATE TABLE IF NOT EXISTS connections (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -502,7 +504,7 @@ const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.s
   c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending,
   cn.name AS connection_name,
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
-  (SELECT body FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
+  (SELECT substr(body, 1, 200) FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
 
 function listConversations({ status, channel, unread, agent, limit = 200 } = {}) {
   const conditions = [];
@@ -560,6 +562,13 @@ function assignmentCounts() {
     .get().n;
   const total = db.prepare('SELECT COUNT(*) AS n FROM conversations').get().n;
   return { agents, unassigned, total };
+}
+
+// Header badge ke liye halka total (poori 200-row list fetch karne ki zaroorat
+// nahi hoti). Har 15s par 75KB list ki jagah ye chhoti query chalti hai.
+function unreadTotal() {
+  const row = db.prepare('SELECT COALESCE(SUM(unread), 0) AS n FROM conversations').get();
+  return Number(row.n) || 0;
 }
 
 function getConversation(id) {
@@ -750,6 +759,7 @@ module.exports = {
   findOrCreateConversation,
   listConversations,
   assignmentCounts,
+  unreadTotal,
   getConversation,
   setConversationStatus,
   setConversationAgent,

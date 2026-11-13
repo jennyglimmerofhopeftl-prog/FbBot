@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { channelOf, formatTime } from '../channels';
@@ -8,7 +8,30 @@ import Avatar from './Avatar.jsx';
 const MIN_LIST_WIDTH = 200;
 const MAX_LIST_WIDTH = 640;
 const LIST_WIDTH_KEY = 'inbox-list-width';
-const AUTO_REFRESH_MS = 10000;
+// SSE realtime updates karta hai; ye sirf safety-net refresh hai (pehle 10s
+// tha - har 10s par poori list + open chat dobara fetch ho rahi thi).
+const AUTO_REFRESH_MS = 60000;
+
+// State churn rokne ke liye: agar data wahi hai to purana reference wapas do,
+// taake 200-row list aur open chat dobara render na hon.
+function conversationsSignature(list) {
+  return list
+    .map(
+      (c) =>
+        `${c.id}:${c.last_message_at || 0}:${c.unread || 0}:${c.status}:${
+          c.assigned_agent_id || 0
+        }:${c.assign_pending || 0}:${(c.note || '').length}:${
+          c.contact_name || ''
+        }:${c.photo || ''}`
+    )
+    .join('|');
+}
+
+function messagesSignature(list) {
+  return list
+    .map((m) => `${m.id}:${m.edited_at || 0}:${m.superseded_by || 0}`)
+    .join('|');
+}
 
 // Inbox tabs: All aur Unread ke sath status filters. "Unread" backend se
 // query hota hai (c.unread > 0); status filters bhi API ke through.
@@ -149,9 +172,11 @@ export default function ChatWorkspace({ agentView = false }) {
         setConversations((prev) => {
           let next = list;
           if (agentView) next = list.filter((c) => c.assigned_agent_id === user?.id);
-          return [...next]
+          next = [...next]
             .filter((c) => matchesTab(c))
             .sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0));
+          // Data wahi hai to purana reference rakho - list dobara render na ho.
+          return conversationsSignature(prev) === conversationsSignature(next) ? prev : next;
         });
         if (!agentView) {
           api.assignmentCounts().then(setAgentCounts).catch(() => {});
@@ -159,8 +184,16 @@ export default function ChatWorkspace({ agentView = false }) {
         if (activeIdRef.current) {
           try {
             const { conversation, messages: msgs } = await api.conversation(activeIdRef.current);
-            setActive(conversation);
-            setMessages(msgs);
+            setActive((prev) =>
+              prev && conversationsSignature([prev]) === conversationsSignature([conversation])
+                ? prev
+                : conversation
+            );
+            // Polling se aayi hui bilkul wahi messages ho to reference na badlo
+            // (warna poora thread har refresh par re-render hota hai).
+            setMessages((prev) =>
+              messagesSignature(prev) === messagesSignature(msgs) ? prev : msgs
+            );
           } catch {
             setActiveId(null);
             setActive(null);
@@ -397,15 +430,19 @@ export default function ChatWorkspace({ agentView = false }) {
     setMessages([]);
   }
 
-  const sorted = [...conversations].sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0));
+  const sorted = useMemo(
+    () => [...conversations].sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0)),
+    [conversations]
+  );
 
   const q = search.trim().toLowerCase();
-  const visible = q
-    ? sorted.filter((c) => {
-        const name = String(c.contact_name || c.external_id || '').toLowerCase();
-        return name.includes(q);
-      })
-    : sorted;
+  const visible = useMemo(() => {
+    if (!q) return sorted;
+    return sorted.filter((c) => {
+      const name = String(c.contact_name || c.external_id || '').toLowerCase();
+      return name.includes(q);
+    });
+  }, [sorted, q]);
 
   return (
     <div className="relative flex h-full overflow-hidden">

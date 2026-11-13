@@ -68,14 +68,16 @@ export default function Layout() {
   useEffect(() => {
     async function fetchUnread() {
       try {
-        const { conversations } = await api.conversations();
-        setUnread(conversations.reduce((sum, c) => sum + (c.unread || 0), 0));
+        const { unread } = await api.unreadTotal();
+        setUnread(Number(unread) || 0);
       } catch {
         setUnread(0);
       }
     }
     fetchUnread();
-    const t = setInterval(fetchUnread, 15000);
+    // Pehle yahan poori 200-conversation list (75KB) har 15s par aati thi -
+    // sirf badge ke liye. Ab halka SUM query har 30s par.
+    const t = setInterval(fetchUnread, 30000);
     return () => clearInterval(t);
   }, []);
 

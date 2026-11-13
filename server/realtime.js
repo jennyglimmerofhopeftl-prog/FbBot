@@ -3,7 +3,9 @@ const clients = new Set();
 // Express middleware that turns a request into a Server-Sent-Events stream.
 function stream(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  // no-transform compression middleware ko rok deta hai - warna SSE events
+  // buffer ho kar late pahunchte hain.
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 

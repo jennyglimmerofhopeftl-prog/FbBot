@@ -18,7 +18,16 @@ function BrokenImage({ type = 'image' }) {
 function MediaImage({ src, className }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <BrokenImage type="image" />;
-  return <img src={src} alt="image" onError={() => setFailed(true)} className={className} />;
+  return (
+    <img
+      src={src}
+      alt="image"
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className={className}
+    />
+  );
 }
 
 function MediaVideo({ src, className }) {

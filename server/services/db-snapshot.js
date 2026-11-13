@@ -21,7 +21,12 @@ const config = require('../config');
 const { isR2Configured, getR2Client } = require('../lib/r2');
 
 const KEY = (process.env.DB_SNAPSHOT_KEY || 'db/omnichannel.db').trim();
-const INTERVAL_MS = Math.max(3000, parseInt(process.env.DB_SNAPSHOT_MS || '10000', 10) || 10000);
+// Render free tier par VACUUM INTO + R2 upload mehnga hai. Har 10s ki jagah
+// 30s check, aur snapshot ke darmiyan kam az kam 30s ka gap - is se live chat
+// ke doran server baar baar block nahi hota.
+const INTERVAL_MS = Math.max(3000, parseInt(process.env.DB_SNAPSHOT_MS || '30000', 10) || 30000);
+const DEBOUNCE_MS = Math.max(1000, parseInt(process.env.DB_SNAPSHOT_DEBOUNCE_MS || '10000', 10) || 10000);
+const MIN_GAP_MS = Math.max(0, parseInt(process.env.DB_SNAPSHOT_MIN_GAP_MS || '30000', 10) || 30000);
 const SQLITE_MAGIC = 'SQLite format 3\u0000';
 
 const status = {
@@ -106,6 +111,11 @@ async function restoreDbIfMissing() {
 
 async function snapshotNow(reason = 'manual') {
   if (!enabled() || !dbModule || running) return { ok: false, reason: 'disabled or busy' };
+  // Debounced snapshots ko rate-limit karo: agar abhi 30s ke andar snapshot
+  // ho chuka hai to chhoro - interval wala check baad me upload kar dega.
+  if (reason === 'debounced' && status.last_ok_at && Date.now() - status.last_ok_at < MIN_GAP_MS) {
+    return { ok: true, skipped: true, reason: 'min gap' };
+  }
   running = true;
   const tmpDir = path.join(config.backupDir, 'r2-snapshot');
   const tmp = path.join(tmpDir, `snap-${process.pid}-${Date.now()}.db`);
@@ -150,7 +160,7 @@ function requestSnapshot() {
   pendingTimer = setTimeout(() => {
     pendingTimer = null;
     snapshotNow('debounced').catch(() => {});
-  }, 1500);
+  }, DEBOUNCE_MS);
   if (pendingTimer.unref) pendingTimer.unref();
 }
 

@@ -15,6 +15,8 @@ export default function Avatar({ name, photo, size = 40, className = '' }) {
       <img
         src={photo}
         alt="profile"
+        loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
         className={`${base} object-cover`}
       />

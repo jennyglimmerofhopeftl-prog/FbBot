@@ -1,6 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const express = require('express');
+const compression = require('compression');
 const config = require('./config');
 const dbSnapshot = require('./services/db-snapshot');
 
@@ -96,6 +97,10 @@ async function main() {
 
   const app = express();
   app.disable('x-powered-by');
+  // JSON/JS/CSS gzip karo - slow internet par response ka size 70-80% kam ho
+  // jata hai (75KB conversation list ~10KB). SSE (text/event-stream) is se
+  // mutasir nahi hota kyunki wo compressible nahi hai.
+  app.use(compression());
   // Meta webhooks land here for all three channels.
   // Mounted BEFORE express.json so we can capture the raw body for HMAC verification.
   app.use('/webhook', webhookRouter);
@@ -160,6 +165,13 @@ async function main() {
   // Serve the built React app, if present
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
   if (fs.existsSync(clientDist)) {
+    // Vite ke filenames hash wale hote hain (index-ABC123.js), is liye assets
+    // ko 1 saal cache kar sakte hain - repeat visits par bundle dobara download
+    // nahi hota. index.html ko cache nahi karte taake deploy foran nazar aaye.
+    const assetsDir = path.join(clientDist, 'assets');
+    if (fs.existsSync(assetsDir)) {
+      app.use('/assets', express.static(assetsDir, { maxAge: '1y', immutable: true }));
+    }
     app.use(express.static(clientDist));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/webhook')) return next();

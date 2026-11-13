@@ -1,8 +1,29 @@
 const config = require('../config');
 const { resolveCredentials, graphUrl } = require('./send');
 
+// Har inbound message par Graph API call karna slow tha (aur rate limits bhi).
+// Contact ka naam/photo cache karo: successful 30 min, fallback 5 min.
+const contactCache = new Map();
+const CONTACT_TTL_MS = 30 * 60 * 1000;
+const FALLBACK_TTL_MS = 5 * 60 * 1000;
+
 // Best-effort contact identity lookup. Kisi bhi failure par id hi naam ban jata hai.
 async function resolveContact(channel, externalId, connectionId) {
+  const key = `${channel}:${connectionId || 'env'}:${externalId}`;
+  const cached = contactCache.get(key);
+  if (cached && Date.now() - cached.at < cached.ttl) return cached.info;
+
+  const info = await fetchContact(channel, externalId, connectionId);
+  if (contactCache.size > 5000) contactCache.clear();
+  contactCache.set(key, {
+    at: Date.now(),
+    info,
+    ttl: info && info.name && info.name !== externalId ? CONTACT_TTL_MS : FALLBACK_TTL_MS,
+  });
+  return info;
+}
+
+async function fetchContact(channel, externalId, connectionId) {
   const creds = resolveCredentials(channel, connectionId);
   if (!creds.token) return { name: externalId, photo: null };
 
